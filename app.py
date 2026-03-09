@@ -292,7 +292,6 @@ def analytics_data():
         return jsonify({'error': 'Unauthorized'}), 401
     return jsonify(analytics_state)
 
-import os
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
