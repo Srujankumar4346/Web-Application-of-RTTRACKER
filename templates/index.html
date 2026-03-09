@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RTTracker - Real-Time Object Tracking</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Firebase SDK -->
+    <script type="module" src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js"></script>
+</head>
+
+<body>
+    <div class="grid-bg"></div>
+    <nav class="navbar">
+        <div class="logo-container">
+            <span class="logo glow-text">RTTracker</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="#" class="nav-btn active" data-target="home">Home</a></li>
+            <li><a href="#" class="nav-btn" data-target="simulation">Simulation</a></li>
+            <li><a href="#" class="nav-btn" data-target="analytics">Analytics</a></li>
+            <li><a href="#" class="nav-btn" data-target="team">Team</a></li>
+            <li id="logout-container" style="display:none;"><a href="#" class="nav-btn" id="logout-btn"
+                    style="color:#ff3366;">Logout</a></li>
+        </ul>
+    </nav>
+
+    <main class="content-area">
+        <!-- Home Section -->
+        <section id="home" class="page-section active">
+            <div class="hero">
+                <h1 class="glow-text title-large">Real-Time Object Tracking</h1>
+                <p class="subtitle">Vision-Based AI Analytics for Real-Time Object Tracking</p>
+                <div class="status-indicator">
+                    <span class="dot pulse"></span> SYSTEM ACTIVE &bull; TRACKING ENABLED
+                </div>
+                <div class="hero-buttons">
+                    <button class="btn btn-primary btn-glow"
+                        onclick="document.querySelector('.nav-btn[data-target=\'simulation\']').click()">View
+                        Simulation</button>
+                    <button class="btn btn-outline"
+                        onclick="document.querySelector('.nav-btn[data-target=\'team\']').click()">Learn More</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Simulation Section -->
+        <section id="simulation" class="page-section">
+            <h2 class="section-title glow-text">AI Detection Control Panel</h2>
+            <div class="simulation-container glow-card">
+                <div class="sim-sidebar">
+                    <div id="admin-panel" class="admin-panel glow-card" style="display:none; margin-bottom: 1rem;">
+                        <h3 class="cyber-text"
+                            style="font-size: 1.1rem; border-bottom: 1px solid rgba(0,255,255,0.3); padding-bottom: 0.5rem; margin-bottom: 0.5rem;">
+                            Admin Configuration</h3>
+                        <label for="admin-model" style="display:block; margin-bottom: 0.3rem;">YOLO Model:</label>
+                        <select id="admin-model" class="file-input"
+                            style="width: 100%; margin-bottom: 0.8rem; background: #010a15; color: var(--neon-cyan); border: 1px solid var(--border-color);">
+                            <option value="yolov8n.pt">Nano (yolov8n) - Fast</option>
+                            <option value="yolov8s.pt">Small (yolov8s) - Accurate</option>
+                        </select>
+                        <label for="admin-conf" style="display:block; margin-bottom: 0.3rem;">Confidence Thresh:</label>
+                        <input type="range" id="admin-conf" min="0.1" max="1.0" step="0.05" value="0.25"
+                            style="width: 100%;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.8rem;"><span
+                                style="font-size:0.8rem;">10%</span><span id="conf-val-display"
+                                style="font-size:0.8rem;">25%</span><span style="font-size:0.8rem;">100%</span></div>
+
+                        <label for="admin-iou" style="display:block; margin-bottom: 0.3rem;">Overlap Merge
+                            (IoU):</label>
+                        <input type="range" id="admin-iou" min="0.1" max="1.0" step="0.05" value="0.45"
+                            style="width: 100%;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.8rem;"><span
+                                style="font-size:0.8rem;">Strict</span><span id="iou-val-display"
+                                style="font-size:0.8rem;">45%</span><span style="font-size:0.8rem;">Merge All</span>
+                        </div>
+
+                        <button id="save-config-btn" class="btn btn-outline"
+                            style="width: 100%; font-size: 0.9rem;">Save Config</button>
+                    </div>
+                    <div class="sim-controls">
+                        <button class="btn mode-btn active" data-mode="webcam">Webcam Detection</button>
+                        <button class="btn mode-btn" data-mode="image">Image Detection</button>
+                        <button class="btn mode-btn" data-mode="video">Video Detection</button>
+                    </div>
+                    <div class="sim-content">
+                        <div id="mode-webcam" class="mode-panel active">
+                            <p>Access user webcam.<br>Run YOLOv8 object detection in real time.</p>
+                            <button class="btn btn-primary btn-glow" id="start-webcam">Start Webcam</button>
+                            <button class="btn btn-outline mt-2" id="stop-webcam" style="display:none;">Stop
+                                Webcam</button>
+                        </div>
+                        <div id="mode-image" class="mode-panel">
+                            <p>Upload an image for detection.</p>
+                            <form id="image-upload-form">
+                                <input type="file" id="image-input" accept="image/*" class="file-input">
+                                <label for="image-input" class="btn btn-outline file-label">Choose Image</label>
+                                <span id="img-file-name" class="file-name"></span>
+                                <button type="submit" class="btn btn-primary btn-glow mt-2">Run Detection</button>
+                            </form>
+                        </div>
+                        <div id="mode-video" class="mode-panel">
+                            <p>Upload a video to process frames with YOLO.</p>
+                            <form id="video-upload-form">
+                                <input type="file" id="video-input" accept="video/*" class="file-input">
+                                <label for="video-input" class="btn btn-outline file-label">Choose Video</label>
+                                <span id="vid-file-name" class="file-name"></span>
+                                <button type="submit" class="btn btn-primary btn-glow mt-2">Process Video</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sim-results">
+                    <div class="display-area">
+                        <img id="result-display" src="" alt="Detection Result" style="display:none;">
+                        <div id="loading" class="spinner" style="display:none;"></div>
+                        <p id="placeholder-text" class="cyber-scan">AWAITING FEED...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Analytics Section -->
+        <section id="analytics" class="page-section">
+            <h2 class="section-title glow-text">Data Visualization Dashboard</h2>
+            <div class="dashboard-grid">
+                <div class="top-cards">
+                    <div class="stat-card glow-card">
+                        <h3>Detection Confidence</h3>
+                        <div class="value cyber-text" id="val-confidence">0%</div>
+                    </div>
+                    <div class="stat-card glow-card">
+                        <h3>Objects Tracked</h3>
+                        <div class="value cyber-text" id="val-objects">0</div>
+                    </div>
+                    <div class="stat-card glow-card">
+                        <h3>Processing Time</h3>
+                        <div class="value cyber-text" id="val-ptime">0 ms</div>
+                    </div>
+                    <div class="stat-card glow-card">
+                        <h3>Data Rate (FPS)</h3>
+                        <div class="value cyber-text" id="val-fps">0.0</div>
+                    </div>
+                </div>
+
+                <div class="charts-area">
+                    <div class="chart-box glow-card">
+                        <h3>Performance Metrics (Circular)</h3>
+                        <div class="circular-charts-container">
+                            <div class="circle-chart">
+                                <svg viewBox="0 0 36 36" class="circular-chart cyan">
+                                    <path class="circle-bg"
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                    <path class="circle" stroke-dasharray="85, 100"
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                    <text x="18" y="20.35" class="percentage">85%</text>
+                                </svg>
+                                <span>Tracking Accuracy</span>
+                            </div>
+                            <div class="circle-chart">
+                                <svg viewBox="0 0 36 36" class="circular-chart cyan">
+                                    <path class="circle-bg"
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                    <path class="circle" id="conf-circle" stroke-dasharray="0, 100"
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                    <text x="18" y="20.35" class="percentage" id="conf-text">0%</text>
+                                </svg>
+                                <span>Detection Confidence</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chart-box glow-card progress-bars">
+                        <h3>System Metrics (Progress)</h3>
+                        <div class="progress-item">
+                            <div class="prog-label"><span>Detection Confidence</span> <span id="pb-conf-val">0%</span>
+                            </div>
+                            <div class="prog-bg">
+                                <div class="prog-fill" id="pb-conf" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                        <div class="progress-item">
+                            <div class="prog-label"><span>Motion Intensity</span> <span id="pb-motion-val">45%</span>
+                            </div>
+                            <div class="prog-bg">
+                                <div class="prog-fill" id="pb-motion" style="width: 45%;"></div>
+                            </div>
+                        </div>
+                        <div class="progress-item">
+                            <div class="prog-label"><span>Tracking Accuracy</span> <span id="pb-acc-val">85%</span>
+                            </div>
+                            <div class="prog-bg">
+                                <div class="prog-fill" id="pb-acc" style="width: 85%;"></div>
+                            </div>
+                        </div>
+                        <div class="progress-item">
+                            <div class="prog-label"><span>Frame Rate Utilization</span> <span id="pb-fps-val">0%</span>
+                            </div>
+                            <div class="prog-bg">
+                                <div class="prog-fill" id="pb-fps" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-area mt-4">
+                    <div class="chart-box glow-card">
+                        <h3>Distribution by Class (Bar)</h3>
+                        <div style="position: relative; height: 250px; width: 100%;">
+                            <canvas id="barChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-box glow-card">
+                        <h3>Composition Breakdown (Pie)</h3>
+                        <div style="position: relative; height: 250px; width: 100%;">
+                            <canvas id="pieChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bottom-area pt-2">
+                    <div class="chart-box glow-card">
+                        <h3>Detected Classes Live Feed</h3>
+                        <div id="objects-list" class="obj-list-grid cyber-text">
+                            <div class="obj-item empty">No objects currently detected</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Team Section -->
+        <section id="team" class="page-section">
+            <h2 class="section-title glow-text">Project Team & Mentors</h2>
+            <div class="team-grid">
+                <div class="team-card glow-card">
+                    <div class="avatar">
+                        <div class="hex-border"></div>
+                    </div>
+                    <h3>Srujan Kumar</h3>
+                    <p class="role">Team Lead / Backend</p>
+                </div>
+                <div class="team-card glow-card">
+                    <div class="avatar">
+                        <div class="hex-border"></div>
+                    </div>
+                    <h3>Sai Vignesh</h3>
+                    <p class="role">AI / Model Training</p>
+                </div>
+                <div class="team-card glow-card">
+                    <div class="avatar">
+                        <div class="hex-border"></div>
+                    </div>
+                    <h3>Matam Siddu</h3>
+                    <p class="role">Frontend Developer</p>
+                </div>
+                <div class="team-card glow-card">
+                    <div class="avatar">
+                        <div class="hex-border"></div>
+                    </div>
+                    <h3>Minihas</h3>
+                    <p class="role">Testing & Doc</p>
+                </div>
+            </div>
+
+            <h3 class="section-subtitle mt-4 glow-text">Supervision</h3>
+            <div class="team-grid justify-center">
+                <div class="team-card glow-card advisor-card">
+                    <div class="avatar">
+                        <div class="hex-border advisor"></div>
+                    </div>
+                    <h3>G bruhaspathi</h3>
+                    <p class="role">Guide</p>
+                </div>
+                <div class="team-card glow-card advisor-card">
+                    <div class="avatar">
+                        <div class="hex-border advisor"></div>
+                    </div>
+                    <h3>P Swetha</h3>
+                    <p class="role">Assistant Professor</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Authentication Modal Overlay -->
+    <div id="auth-modal" class="modal-overlay">
+        <div class="modal-card glow-card">
+            <h2 id="auth-title" class="logo glow-text" style="font-size:2.5rem; margin-bottom:2rem;">SYSTEM_AUTH</h2>
+            <p id="auth-subtitle" style="text-align: center; margin-bottom: 1.5rem; color: var(--neon-cyan);">
+                IDENTIFICATION REQUIRED</p>
+
+            <form id="login-form">
+                <div class="input-group">
+                    <label for="username">EMAIL</label>
+                    <input type="email" id="username" required autocomplete="email">
+                </div>
+                <div class="input-group">
+                    <label for="password">ACCESS_CODE</label>
+                    <input type="password" id="password" required autocomplete="current-password">
+                </div>
+                <div id="login-error" class="error-msg"
+                    style="color:#ff3366; align-self:flex-start; margin-bottom:1rem; display:none; font-size:0.9rem;">
+                    Access Denied.</div>
+                <button type="submit" id="auth-submit-btn" class="btn btn-primary btn-glow"
+                    style="width:100%; font-size:1.2rem; padding: 0.8rem;">AUTHENTICATE</button>
+            </form>
+
+            <div style="text-align: center; margin-top: 1.5rem;">
+                <a href="#" id="toggle-auth-mode"
+                    style="color: var(--neon-cyan); font-size: 0.85rem; text-decoration: none; cursor: pointer; transition: text-shadow 0.3s ease;">
+                    NEW USER? INITIALIZE A NODE (SIGN UP)
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+
+</html>
