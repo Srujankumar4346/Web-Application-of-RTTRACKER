@@ -1,4 +1,6 @@
 flask
-opencv-python
+opencv-python-headless
 ultralytics
+gunicorn
+numpy
 werkzeug
