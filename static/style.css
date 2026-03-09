@@ -823,3 +823,38 @@ input[type=range]::-webkit-slider-runnable-track {
     background: rgba(0, 255, 255, 0.2);
     border-radius: 2px;
 }
+
+/* --- Multi-Image Grid Layout --- */
+.grid-display {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 15px;
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+.grid-slot {
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.5s ease;
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.1);
+    position: relative;
+}
+
+.grid-slot img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}

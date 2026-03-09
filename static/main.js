@@ -1,34 +1,11 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
-
-const firebaseConfig = {
-    apiKey: "AIzaSyD_0sFroCFz0zzbeGdQ4A-2-boBHN3jUt8",
-    authDomain: "rttracker-8bb39.firebaseapp.com",
-    projectId: "rttracker-8bb39",
-    storageBucket: "rttracker-8bb39.firebasestorage.app",
-    messagingSenderId: "531381957306",
-    appId: "1:531381957306:web:380085c504a171f68f0883",
-    measurementId: "G-GV3PT4RPMQ"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-
 document.addEventListener('DOMContentLoaded', () => {
 
     // --- Navigation logic for Single Page App ---
     const navBtns = document.querySelectorAll('.nav-btn');
     const sections = document.querySelectorAll('.page-section');
 
-    // Auth Elements
-    const loginModal = document.getElementById('auth-modal');
-    const loginForm = document.getElementById('login-form');
-    const loginError = document.getElementById('login-error');
-    const logoutContainer = document.getElementById('logout-container');
-    const logoutBtn = document.getElementById('logout-btn');
     const adminPanel = document.getElementById('admin-panel');
 
-    let currentUserRole = null;
     let pollInterval = null;
 
     window.switchTab = function (targetId) {
@@ -93,7 +70,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function showResult(src) {
         loading.style.display = 'none';
         placeholderText.style.display = 'none';
-        resultDisplay.src = src;
+
+        // Prevent browser caching the video feed URL which causes infinite loading
+        if (src.includes('/video')) {
+            resultDisplay.src = src + '?t=' + new Date().getTime();
+        } else {
+            resultDisplay.src = src;
+        }
+
         resultDisplay.style.display = 'block';
     }
 
@@ -136,50 +120,104 @@ document.addEventListener('DOMContentLoaded', () => {
     const imgInput = document.getElementById('image-input');
     if (imgInput) {
         imgInput.addEventListener('change', function () {
-            document.getElementById('img-file-name').textContent = this.files[0] ? this.files[0].name : '';
+            if (this.files.length > 1) {
+                document.getElementById('img-file-name').textContent = `${this.files.length} files selected`;
+            } else {
+                document.getElementById('img-file-name').textContent = this.files[0] ? this.files[0].name : '';
+            }
         });
     }
 
     const vidInput = document.getElementById('video-input');
     if (vidInput) {
         vidInput.addEventListener('change', function () {
-            document.getElementById('vid-file-name').textContent = this.files[0] ? this.files[0].name : '';
+            if (this.files.length > 1) {
+                document.getElementById('vid-file-name').textContent = `${this.files.length} files selected`;
+            } else {
+                document.getElementById('vid-file-name').textContent = this.files[0] ? this.files[0].name : '';
+            }
         });
     }
 
     // --- Image Upload ---
     const imgForm = document.getElementById('image-upload-form');
+    const gridDisplay = document.getElementById('grid-display');
+
     if (imgForm) {
         imgForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const fileInput = document.getElementById('image-input');
-            if (!fileInput.files.length) return alert('Please select an image first.');
+            const totalFiles = fileInput.files.length;
+            if (!totalFiles) return alert('Please select images first.');
 
-            showLoading();
+            const fileNameDisplay = document.getElementById('img-file-name');
 
-            const formData = new FormData();
-            formData.append('image', fileInput.files[0]);
+            if (totalFiles === 1) {
+                // Single image behavior
+                gridDisplay.style.display = 'none';
+                resultDisplay.style.display = 'block';
+                await processSingleImage(fileInput.files[0], fileNameDisplay);
+            } else {
+                // Multi-image grid behavior (batches of 4)
+                resultDisplay.style.display = 'none';
+                gridDisplay.style.display = 'grid';
 
-            try {
-                const response = await fetch('/upload_image', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
+                for (let i = 0; i < totalFiles; i += 4) {
+                    // Clear previous grid slots if starting a new batch
+                    for (let s = 0; s < 4; s++) {
+                        const slot = document.getElementById(`slot-${s}`);
+                        slot.src = '';
+                        slot.parentElement.style.opacity = '0.3';
+                    }
 
-                if (data.error) {
-                    alert(data.error);
-                    resetDisplay();
-                    return;
+                    const batch = Array.from(fileInput.files).slice(i, i + 4);
+                    const batchPromises = batch.map(async (file, index) => {
+                        const slotIdx = index;
+                        const slotImg = document.getElementById(`slot-${slotIdx}`);
+                        const slotParent = slotImg.parentElement;
+
+                        fileNameDisplay.textContent = `Processing ${i + index + 1} of ${totalFiles}...`;
+
+                        const formData = new FormData();
+                        formData.append('image', file);
+
+                        try {
+                            const response = await fetch('/upload_image', { method: 'POST', body: formData });
+                            const data = await response.json();
+                            if (data.image) {
+                                slotImg.src = `data:image/jpeg;base64,${data.image}`;
+                                slotParent.style.opacity = '1';
+                            }
+                        } catch (err) {
+                            console.error(err);
+                        }
+                    });
+
+                    await Promise.all(batchPromises);
+
+                    // Wait 4 seconds for user to view the batch of 4 before next set
+                    if (i + 4 < totalFiles) {
+                        fileNameDisplay.textContent = `Batch complete. Waiting 4s...`;
+                        await new Promise(r => setTimeout(r, 4000));
+                    }
                 }
-
-                showResult(`data:image/jpeg;base64,${data.image}`);
-            } catch (err) {
-                console.error(err);
-                alert('Error connecting to tracking server.');
-                resetDisplay();
+                fileNameDisplay.textContent = `${totalFiles} images processed.`;
             }
         });
+    }
+
+    async function processSingleImage(file, display) {
+        showLoading();
+        display.textContent = `Processing: ${file.name}`;
+        const formData = new FormData();
+        formData.append('image', file);
+        try {
+            const response = await fetch('/upload_image', { method: 'POST', body: formData });
+            const data = await response.json();
+            if (data.image) showResult(`data:image/jpeg;base64,${data.image}`);
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     // --- Video Upload ---
@@ -188,32 +226,40 @@ document.addEventListener('DOMContentLoaded', () => {
         vidForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const fileInput = document.getElementById('video-input');
-            if (!fileInput.files.length) return alert('Please select a video file.');
+            if (!fileInput.files.length) return alert('Please select video files.');
 
-            showLoading();
+            for (let i = 0; i < fileInput.files.length; i++) {
+                showLoading();
+                const file = fileInput.files[i];
+                const formData = new FormData();
+                formData.append('video', file);
 
-            const formData = new FormData();
-            formData.append('video', fileInput.files[0]);
+                try {
+                    const response = await fetch('/upload_video', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
 
-            try {
-                const response = await fetch('/upload_video', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
+                    if (data.error) {
+                        alert(`Error on file ${file.name}: ${data.error}`);
+                        continue;
+                    }
 
-                if (data.error) {
-                    alert(data.error);
-                    resetDisplay();
-                    return;
+                    // Set the src to the video stream returned by API
+                    showResult(data.video_url);
+
+                    // For multiple videos, we might want a way to skip or wait
+                    // For now, let's just wait if there's more than one
+                    if (i < fileInput.files.length - 1) {
+                        // We wait 10 seconds per video if multiple are selected, or we could add a "skip" button
+                        // Given it's a presentation, 10s is a decent preview
+                        await new Promise(resolve => setTimeout(resolve, 10000));
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert(`Error uploading ${file.name}`);
                 }
-
-                // Set the src to the video stream returned by API
-                showResult(data.video_url);
-            } catch (err) {
-                console.error(err);
-                alert('Error uploading and processing video.');
-                resetDisplay();
             }
         });
     }
@@ -362,115 +408,6 @@ document.addEventListener('DOMContentLoaded', () => {
         lastData = { confidence, total, fps, accuracy, motion };
     }
 
-    // --- Auth & Admin Logic ---
-    function checkSession() {
-        console.log("Checking session...");
-        fetch('/user_status')
-            .then(r => r.json())
-            .then(data => {
-                if (data.logged_in) {
-                    loginModal.style.display = 'none';
-                    logoutContainer.style.display = 'inline-block';
-                    currentUserRole = data.role;
-                    if (currentUserRole === 'admin') {
-                        adminPanel.style.display = 'block';
-                        fetchAdminConfig();
-                    } else {
-                        adminPanel.style.display = 'none';
-                    }
-                    if (!pollInterval) {
-                        pollInterval = setInterval(fetchAnalytics, 2000);
-                        fetchAnalytics();
-                    }
-                } else {
-                    loginModal.style.display = 'flex';
-                    logoutContainer.style.display = 'none';
-                    adminPanel.style.display = 'none';
-                    if (pollInterval) {
-                        clearInterval(pollInterval);
-                        pollInterval = null;
-                    }
-                }
-            }).catch(e => console.error(e));
-    }
-
-    let isSignUpMode = false;
-    const toggleAuthModeBtn = document.getElementById('toggle-auth-mode');
-    const authTitle = document.getElementById('auth-title');
-    const authSubmitBtn = document.getElementById('auth-submit-btn');
-
-    toggleAuthModeBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        isSignUpMode = !isSignUpMode;
-        if (isSignUpMode) {
-            authTitle.textContent = "REGISTER_NODE";
-            authSubmitBtn.textContent = "INITIALIZE NODE (REGISTER)";
-            toggleAuthModeBtn.textContent = "ALREADY SECURED? AUTHENTICATE (LOGIN)";
-        } else {
-            authTitle.textContent = "SYSTEM_AUTH";
-            authSubmitBtn.textContent = "AUTHENTICATE";
-            toggleAuthModeBtn.textContent = "NEW USER? INITIALIZE A NODE (SIGN UP)";
-        }
-    });
-
-    loginForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const email = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
-
-        authSubmitBtn.textContent = "PROCESSING...";
-        authSubmitBtn.disabled = true;
-
-        if (isSignUpMode) {
-            createUserWithEmailAndPassword(auth, email, password)
-                .then((userCredential) => userCredential.user.getIdToken())
-                .then(idToken => sendTokenToBackend(idToken))
-                .catch(err => {
-                    loginError.textContent = err.message;
-                    loginError.style.display = 'block';
-                    authSubmitBtn.textContent = "INITIALIZE NODE (REGISTER)";
-                    authSubmitBtn.disabled = false;
-                });
-        } else {
-            signInWithEmailAndPassword(auth, email, password)
-                .then((userCredential) => userCredential.user.getIdToken())
-                .then(idToken => sendTokenToBackend(idToken))
-                .catch(err => {
-                    loginError.textContent = "Access Denied: " + err.message;
-                    loginError.style.display = 'block';
-                    authSubmitBtn.textContent = "AUTHENTICATE";
-                    authSubmitBtn.disabled = false;
-                });
-        }
-    });
-
-    function sendTokenToBackend(idToken) {
-        fetch('/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken: idToken })
-        }).then(r => r.json()).then(data => {
-            if (data.success) {
-                loginError.style.display = 'none';
-                loginForm.reset();
-                authSubmitBtn.disabled = false;
-                checkSession();
-            } else {
-                loginError.textContent = "Server Trust Failed: " + data.message;
-                loginError.style.display = 'block';
-                authSubmitBtn.textContent = isSignUpMode ? "INITIALIZE NODE (REGISTER)" : "AUTHENTICATE";
-                authSubmitBtn.disabled = false;
-            }
-        });
-    }
-
-    logoutBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        signOut(auth).then(() => {
-            fetch('/logout', { method: 'POST' }).then(() => checkSession());
-        });
-    });
-
     // --- Admin Config Logic ---
     const adminConfSlider = document.getElementById('admin-conf');
     const confValDisplay = document.getElementById('conf-val-display');
@@ -521,6 +458,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Start App by checking login
-    checkSession();
+    // Start App globally
+    adminPanel.style.display = 'block';
+    fetchAdminConfig();
+    pollInterval = setInterval(fetchAnalytics, 2000);
+    fetchAnalytics();
 });
