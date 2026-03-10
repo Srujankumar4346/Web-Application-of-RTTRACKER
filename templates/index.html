@@ -25,11 +25,10 @@
     <div class="grid-bg"></div>
     <nav class="navbar">
         <div class="logo-container">
-            <span class="logo glow-text">RTTracker</span>
+            <span class="logo glow-text" style="cursor:pointer;" onclick="switchTab('home')"
+                title="Go Home">RTTracker</span>
         </div>
         <ul class="nav-links">
-            <li><a href="#" class="nav-btn active" data-target="home">Home</a></li>
-            <li>
             <li><a href="#" class="nav-btn" data-target="simulation">Simulation</a></li>
             <li><a href="#" class="nav-btn" data-target="analytics">Analytics</a></li>
             <li><a href="#" class="nav-btn" data-target="history">History</a></li>
@@ -62,108 +61,87 @@
                         More</button>
                 </div>
 
-                <!-- Animated AI Counter Hero -->
-                <div
-                    style="display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin: 2rem auto; max-width: 700px;">
-                    <div class="counter-pill glow-card">
-                        <div class="counter-label">OBJECTS DETECTED</div>
-                        <div class="counter-val cyber-text" id="cnt-objects">0</div>
-                    </div>
-                    <div class="counter-pill glow-card">
-                        <div class="counter-label">FRAMES PROCESSED</div>
-                        <div class="counter-val cyber-text" id="cnt-frames">0</div>
-                    </div>
-                    <div class="counter-pill glow-card">
-                        <div class="counter-label">DETECTION RATE</div>
-                        <div class="counter-val cyber-text" id="cnt-rate">0<span style="font-size:1.2rem">%</span></div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Threat Intelligence Ticker -->
-            <div class="threat-ticker mt-4">
-                <span class="ticker-label">⬡ LIVE INTEL</span>
-                <div class="ticker-track">
-                    <span class="ticker-text">
-                        PERSON DETECTED @ SECTOR 7 &nbsp;|&nbsp;
-                        CAR LOCKED @ SECTOR 12 &nbsp;|&nbsp;
-                        BICYCLE TRACKED @ ZONE A &nbsp;|&nbsp;
-                        BACKPACK FLAGGED @ ENTRY POINT &nbsp;|&nbsp;
-                        REAL-TIME AI ENGINE ACTIVE &nbsp;|&nbsp;
-                        YOLOv8 LOADED &bull; ALL 80 CLASSES ENABLED &nbsp;|&nbsp;
-                        SUPABASE UPLINK SECURE &nbsp;|&nbsp;
-                        CLERK AUTH: VERIFIED &nbsp;|&nbsp;
-                        OBJECT COUNT UPDATED &bull; TRACKING ACTIVE &nbsp;|&nbsp;
-                    </span>
-                </div>
-            </div>
 
-            <!-- Core Features Grid -->
-            <div id="features" style="margin-top: 5rem;">
-                <h2 class="section-title glow-text" style="font-size: 1.5rem; border-bottom: none;">System Capabilities
-                </h2>
-                <div
-                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; margin-top: 2rem;">
-                    <div class="glow-card" style="text-align: center; padding: 2rem;">
-                        <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Live Webcam Tracking</h3>
-                        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Connect directly to
-                            your local camera feed for instantaneous AI object detection overlaid in real-time.</p>
-                    </div>
-                    <div class="glow-card" style="text-align: center; padding: 2rem;">
-                        <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Batch Image Processing
-                        </h3>
-                        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Upload multiple
-                            high-resolution images simultaneously. The AI processes them in customized multi-threaded
-                            batches.</p>
-                    </div>
-                    <div class="glow-card" style="text-align: center; padding: 2rem;">
-                        <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Video Frame Analysis</h3>
-                        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Submit prerecorded
-                            MP4 files. The engine extracts, analyzes, and streams the tracked frames back to your
-                            dashboard.</p>
-                    </div>
-                    <div class="glow-card" style="text-align: center; padding: 2rem;">
-                        <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Cloud Data Analytics</h3>
-                        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Every detection event
-                            is securely logged to a PostgreSQL Supabase database for historical querying and reporting.
-                        </p>
+                <!-- Core Features Grid -->
+                <div id="features" style="margin-top: 5rem;">
+                    <h2 class="section-title glow-text" style="font-size: 1.5rem; border-bottom: none;">System
+                        Capabilities
+                    </h2>
+                    <div
+                        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; margin-top: 2rem;">
+                        <div class="glow-card" style="text-align: center; padding: 2rem;">
+                            <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Live Webcam Tracking
+                            </h3>
+                            <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Connect directly
+                                to
+                                your local camera feed for instantaneous AI object detection overlaid in real-time.</p>
+                        </div>
+                        <div class="glow-card" style="text-align: center; padding: 2rem;">
+                            <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Batch Image
+                                Processing
+                            </h3>
+                            <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Upload multiple
+                                high-resolution images simultaneously. The AI processes them in customized
+                                multi-threaded
+                                batches.</p>
+                        </div>
+                        <div class="glow-card" style="text-align: center; padding: 2rem;">
+                            <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Video Frame Analysis
+                            </h3>
+                            <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Submit
+                                prerecorded
+                                MP4 files. The engine extracts, analyzes, and streams the tracked frames back to your
+                                dashboard.</p>
+                        </div>
+                        <div class="glow-card" style="text-align: center; padding: 2rem;">
+                            <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Cloud Data Analytics
+                            </h3>
+                            <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Every detection
+                                event
+                                is securely logged to a PostgreSQL Supabase database for historical querying and
+                                reporting.
+                            </p>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- How It Works Workflow -->
-            <div style="margin-top: 5rem; text-align: center; margin-bottom: 4rem;">
-                <h2 class="section-title glow-text"
-                    style="font-size: 1.5rem; margin-bottom: 3rem; border-bottom: none;">Core Workflow</h2>
-                <div style="display: flex; justify-content: center; align-items: center; gap: 2rem; flex-wrap: wrap;">
-                    <div style="flex: 1; min-width: 200px;">
-                        <div class="cyber-text" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;">O1</div>
-                        <h4
-                            style="color: #fff; margin-bottom: 0.5rem; font-family: var(--font-heading); font-size: 1.2rem; text-transform: uppercase;">
-                            Initialize Source</h4>
-                        <p style="color: var(--text-muted); font-size: 0.9rem;">Select your camera or upload media files
-                            into the system.</p>
-                    </div>
-                    <div style="color: var(--neon-cyan); font-size: 2rem; opacity: 0.5;">&rarr;</div>
-                    <div style="flex: 1; min-width: 200px;">
-                        <div class="cyber-text" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;">O2</div>
-                        <h4
-                            style="color: #fff; margin-bottom: 0.5rem; font-family: var(--font-heading); font-size: 1.2rem; text-transform: uppercase;">
-                            Neural Processing</h4>
-                        <p style="color: var(--text-muted); font-size: 0.9rem;">The backend YOLOv8 model calculates
-                            bounding boxes instantly.</p>
-                    </div>
-                    <div style="color: var(--neon-cyan); font-size: 2rem; opacity: 0.5;">&rarr;</div>
-                    <div style="flex: 1; min-width: 200px;">
-                        <div class="cyber-text" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;">O3</div>
-                        <h4
-                            style="color: #fff; margin-bottom: 0.5rem; font-family: var(--font-heading); font-size: 1.2rem; text-transform: uppercase;">
-                            Data Extraction</h4>
-                        <p style="color: var(--text-muted); font-size: 0.9rem;">Metrics are visualized live and stored
-                            in the secure cloud.</p>
+                <!-- How It Works Workflow -->
+                <div style="margin-top: 5rem; text-align: center; margin-bottom: 4rem;">
+                    <h2 class="section-title glow-text"
+                        style="font-size: 1.5rem; margin-bottom: 3rem; border-bottom: none;">Core Workflow</h2>
+                    <div
+                        style="display: flex; justify-content: center; align-items: center; gap: 2rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <div class="cyber-text" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;">O1</div>
+                            <h4
+                                style="color: #fff; margin-bottom: 0.5rem; font-family: var(--font-heading); font-size: 1.2rem; text-transform: uppercase;">
+                                Initialize Source</h4>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Select your camera or upload media
+                                files
+                                into the system.</p>
+                        </div>
+                        <div style="color: var(--neon-cyan); font-size: 2rem; opacity: 0.5;">&rarr;</div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <div class="cyber-text" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;">O2</div>
+                            <h4
+                                style="color: #fff; margin-bottom: 0.5rem; font-family: var(--font-heading); font-size: 1.2rem; text-transform: uppercase;">
+                                Neural Processing</h4>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">The backend YOLOv8 model calculates
+                                bounding boxes instantly.</p>
+                        </div>
+                        <div style="color: var(--neon-cyan); font-size: 2rem; opacity: 0.5;">&rarr;</div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <div class="cyber-text" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;">O3</div>
+                            <h4
+                                style="color: #fff; margin-bottom: 0.5rem; font-family: var(--font-heading); font-size: 1.2rem; text-transform: uppercase;">
+                                Data Extraction</h4>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Metrics are visualized live and
+                                stored
+                                in the secure cloud.</p>
+                        </div>
                     </div>
                 </div>
-            </div>
         </section>
 
         <!-- Simulation Section -->
