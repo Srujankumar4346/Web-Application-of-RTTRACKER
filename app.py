@@ -109,12 +109,10 @@ def process_frame(frame, tracking=True):
     with model_lock:
         if tracking:
             # Use imgsz=320 to drastically accelerate CPU processing speed
-            # Tracking all 80 classes to ensure maximum detection for the project
             results = model.track(frame, conf=conf_thresh, iou=iou_thresh, persist=True, verbose=False, imgsz=320)
         else:
-            # For static images, we use predict. 
-            # We enforce a fresh prediction to avoid tracker-related state crashes.
-            results = model.predict(frame, conf=conf_thresh, iou=iou_thresh, verbose=False, imgsz=320)
+            # For static images: use 256 to reduce peak RAM footprint on Cloud free tiers
+            results = model.predict(frame, conf=conf_thresh, iou=iou_thresh, verbose=False, imgsz=256)
         
     res = results[0]
     annotated_frame = res.plot()

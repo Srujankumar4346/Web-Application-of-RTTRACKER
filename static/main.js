@@ -283,7 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData();
         formData.append('image', file);
         try {
-            const token = await window.Clerk ? await window.Clerk.session.getToken() : null;
+            const token = window.Clerk && window.Clerk.session ? await window.Clerk.session.getToken() : null;
             const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
             const response = await fetch('/upload_image', {
@@ -291,13 +291,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: formData,
                 headers: headers
             });
-            const data = await response.json();
 
             if (response.status === 401) {
                 alert("Please sign in to run detections!");
                 resetDisplay();
                 return;
             }
+
+            if (response.status === 413) {
+                alert("Image file is too large! Please use an image under 16MB.");
+                resetDisplay();
+                return;
+            }
+
+            // Guard against non-JSON responses (like Render's 502/504 HTML error pages)
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error("Non-JSON response (HTTP " + response.status + "):", text.substring(0, 300));
+                alert(`Server error (HTTP ${response.status}). The server may have run out of memory. Please try a smaller image or try again in a moment.`);
+                resetDisplay();
+                return;
+            }
+
+            const data = await response.json();
 
             if (data.error) {
                 alert("Error: " + data.error);
@@ -308,7 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.image) showResult(`data:image/jpeg;base64,${data.image}`);
         } catch (err) {
             console.error(err);
-            alert("Network error processing image.");
+            alert("Network error: " + err.message + ". The server may be busy or starting up — wait 30 seconds and try again.");
             resetDisplay();
         }
     }
