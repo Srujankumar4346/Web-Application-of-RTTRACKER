@@ -1,0 +1,8 @@
+.env
+*.webp
+*.heic
+__pycache__/
+uploads/
+*.pyc
+.DS_Store
+venv/
