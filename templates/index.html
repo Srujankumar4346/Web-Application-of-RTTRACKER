@@ -62,40 +62,39 @@
                         More</button>
                 </div>
 
-                <!-- Terminal Log Block -->
-                <div class="terminal-box glow-card"
-                    style="text-align: left; max-width: 600px; margin: 0 auto; height: 150px; overflow-y: hidden; font-family: 'Roboto Mono', monospace; font-size: 0.85rem; color: var(--neon-cyan); background: rgba(0, 10, 20, 0.8);">
-                    <div id="terminal-content"></div>
+                <!-- Animated AI Counter Hero -->
+                <div
+                    style="display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin: 2rem auto; max-width: 700px;">
+                    <div class="counter-pill glow-card">
+                        <div class="counter-label">OBJECTS DETECTED</div>
+                        <div class="counter-val cyber-text" id="cnt-objects">0</div>
+                    </div>
+                    <div class="counter-pill glow-card">
+                        <div class="counter-label">FRAMES PROCESSED</div>
+                        <div class="counter-val cyber-text" id="cnt-frames">0</div>
+                    </div>
+                    <div class="counter-pill glow-card">
+                        <div class="counter-label">DETECTION RATE</div>
+                        <div class="counter-val cyber-text" id="cnt-rate">0<span style="font-size:1.2rem">%</span></div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Live Metrics Strip -->
-            <div class="metrics-strip glow-card mt-4"
-                style="display: flex; justify-content: space-around; padding: 2rem; margin-top: 4rem;">
-                <div class="metric-item text-center">
-                    <h4
-                        style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">
-                        Total Frames Analyzed</h4>
-                    <div class="cyber-text" style="font-size: 2rem;" id="hero-frames">1,048,576</div>
-                </div>
-                <div class="metric-item text-center">
-                    <h4
-                        style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">
-                        Active AI Engine</h4>
-                    <div class="cyber-text" style="font-size: 2rem;">YOLOv8N</div>
-                </div>
-                <div class="metric-item text-center">
-                    <h4
-                        style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">
-                        Avg Latency</h4>
-                    <div class="cyber-text" style="font-size: 2rem;"><span id="hero-ping">12</span>ms</div>
-                </div>
-                <div class="metric-item text-center">
-                    <h4
-                        style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">
-                        Cloud Storage</h4>
-                    <div class="cyber-text" style="font-size: 2rem; color: #00ffaa; text-shadow: 0 0 10px #00ffaa;">
-                        ONLINE</div>
+            <!-- Threat Intelligence Ticker -->
+            <div class="threat-ticker mt-4">
+                <span class="ticker-label">⬡ LIVE INTEL</span>
+                <div class="ticker-track">
+                    <span class="ticker-text">
+                        PERSON DETECTED @ SECTOR 7 &nbsp;|&nbsp;
+                        CAR LOCKED @ SECTOR 12 &nbsp;|&nbsp;
+                        BICYCLE TRACKED @ ZONE A &nbsp;|&nbsp;
+                        BACKPACK FLAGGED @ ENTRY POINT &nbsp;|&nbsp;
+                        REAL-TIME AI ENGINE ACTIVE &nbsp;|&nbsp;
+                        YOLOv8 LOADED &bull; ALL 80 CLASSES ENABLED &nbsp;|&nbsp;
+                        SUPABASE UPLINK SECURE &nbsp;|&nbsp;
+                        CLERK AUTH: VERIFIED &nbsp;|&nbsp;
+                        OBJECT COUNT UPDATED &bull; TRACKING ACTIVE &nbsp;|&nbsp;
+                    </span>
                 </div>
             </div>
 
@@ -254,7 +253,7 @@
 
         <!-- Analytics Section -->
         <section id="analytics" class="page-section">
-            <h2 class="section-title glow-text">Data Visualization Dashboard</h2>
+            <h2 class="section-title glow-text">Neural Intelligence Command Center</h2>
             <div class="dashboard-grid">
                 <div class="top-cards">
                     <div class="stat-card glow-card">

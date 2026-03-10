@@ -604,6 +604,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Save state for next animation frame
         lastData = { confidence, total, fps, accuracy, motion };
+
+        // Keep homepage counters in sync with live analytics
+        updateHeroCounters(total, fps, accuracy);
+    }
+
+    // --- Hero Counter Animations ---
+    let heroFrameCount = 0;
+    function animateCounter(el, target) {
+        if (!el) return;
+        const current = parseInt(el.textContent) || 0;
+        const step = Math.ceil(Math.abs(target - current) / 8);
+        if (current < target) {
+            el.textContent = Math.min(current + step, target);
+        } else if (current > target) {
+            el.textContent = Math.max(current - step, target);
+        }
+    }
+    function updateHeroCounters(objects, fps, accuracy) {
+        heroFrameCount += Math.max(1, Math.round(fps));
+        const cntObjects = document.getElementById('cnt-objects');
+        const cntFrames = document.getElementById('cnt-frames');
+        const cntRate = document.getElementById('cnt-rate');
+        if (cntObjects) animateCounter(cntObjects, objects);
+        if (cntFrames) cntFrames.textContent = heroFrameCount.toLocaleString();
+        if (cntRate) {
+            const rateEl = cntRate.querySelector('span') ? cntRate : cntRate;
+            const numPart = Math.round(accuracy);
+            const inner = cntRate.innerHTML;
+            cntRate.innerHTML = `${numPart}<span style="font-size:1.2rem">%</span>`;
+        }
     }
 
     // --- Admin Config Logic ---
