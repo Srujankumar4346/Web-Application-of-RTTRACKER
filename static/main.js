@@ -90,23 +90,49 @@ document.addEventListener('DOMContentLoaded', () => {
         stopWebcamMode();
     }
 
-    // --- Webcam Capture ---
+    // --- Webcam Capture via Browser (Cloud Compatible) ---
     const startWebcamBtn = document.getElementById('start-webcam');
     const stopWebcamBtn = document.getElementById('stop-webcam');
+    const clientWebcam = document.getElementById('client-webcam');
+    const clientCanvas = document.getElementById('client-canvas');
+    let webcamStream = null;
+    let webcamInterval = null;
 
     function stopWebcamMode() {
         if (startWebcamBtn) startWebcamBtn.style.display = 'inline-block';
         if (stopWebcamBtn) stopWebcamBtn.style.display = 'none';
-        if (resultDisplay.src.includes('/video')) {
-            resultDisplay.src = '';
+
+        if (webcamInterval) {
+            clearInterval(webcamInterval);
+            webcamInterval = null;
         }
+        if (webcamStream) {
+            webcamStream.getTracks().forEach(track => track.stop());
+            webcamStream = null;
+        }
+        if (clientWebcam) clientWebcam.srcObject = null;
+
+        resultDisplay.src = '';
     }
 
     if (startWebcamBtn) {
-        startWebcamBtn.addEventListener('click', () => {
-            showResult('/video');
-            startWebcamBtn.style.display = 'none';
-            stopWebcamBtn.style.display = 'inline-block';
+        startWebcamBtn.addEventListener('click', async () => {
+            try {
+                webcamStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                clientWebcam.srcObject = webcamStream;
+                startWebcamBtn.style.display = 'none';
+                stopWebcamBtn.style.display = 'inline-block';
+                loading.style.display = 'none';
+                placeholderText.style.display = 'none';
+                resultDisplay.style.display = 'block';
+
+                // Process frames at roughly 5 FPS to avoid crashing Cloud free tiers
+                webcamInterval = setInterval(processWebcamFrame, 200);
+            } catch (err) {
+                console.error(err);
+                alert("Could not access your camera: " + err.message);
+                resetDisplay();
+            }
         });
     }
 
@@ -114,6 +140,43 @@ document.addEventListener('DOMContentLoaded', () => {
         stopWebcamBtn.addEventListener('click', () => {
             resetDisplay();
         });
+    }
+
+    async function processWebcamFrame() {
+        if (!clientWebcam || !clientCanvas || !clientWebcam.videoWidth) return;
+
+        clientCanvas.width = clientWebcam.videoWidth;
+        clientCanvas.height = clientWebcam.videoHeight;
+        const ctx = clientCanvas.getContext('2d');
+        ctx.drawImage(clientWebcam, 0, 0, clientCanvas.width, clientCanvas.height);
+
+        // Compress heavily for cloud uploads (0.6 quality JPEG)
+        const base64Data = clientCanvas.toDataURL('image/jpeg', 0.6);
+
+        try {
+            const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const response = await fetch('/process_webcam_frame', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ image: base64Data })
+            });
+
+            if (response.status === 401) {
+                stopWebcamMode();
+                alert("Please sign in to detect targets.");
+                return;
+            }
+
+            const data = await response.json();
+            if (data.image) {
+                resultDisplay.src = `data:image/jpeg;base64,${data.image}`;
+            }
+        } catch (err) {
+            console.error("Frame dropped:", err);
+        }
     }
 
     // --- File Input Labels updating ---

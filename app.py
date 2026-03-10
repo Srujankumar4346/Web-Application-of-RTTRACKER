@@ -15,6 +15,7 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 # Limit uploads to 16MB to prevent Cloud OOM kills
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Initialize Supabase
@@ -242,10 +243,42 @@ def admin_config():
 def index():
     return render_template('index.html')
 
-@app.route('/video')
-def video():
-    # 0 is the default webcam
-    return Response(generate_frames(0), mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/process_webcam_frame', methods=['POST'])
+def process_webcam_frame():
+    try:
+        user_id = get_auth_user()
+        if not user_id:
+            return jsonify({'error': 'Unauthorized'}), 401
+            
+        data = request.json
+        img_b64 = data.get('image', '')
+        if not img_b64 or ',' not in img_b64:
+            return jsonify({'error': 'No image data'}), 400
+            
+        img_b64 = img_b64.split(',')[1]
+        img_data = base64.b64decode(img_b64)
+        
+        import numpy as np
+        nparr = np.frombuffer(img_data, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            return jsonify({'error': 'Invalid framedata'}), 400
+            
+        # Resize to standard size for faster inference
+        frame = cv2.resize(frame, (480, 360))
+        annotated_frame = process_frame(frame, tracking=True)
+        
+        ret, buffer = cv2.imencode('.jpg', annotated_frame)
+        if not ret:
+            return jsonify({'error': 'Encoding failed'}), 500
+            
+        out_b64 = base64.b64encode(buffer).decode('utf-8')
+        return jsonify({'image': out_b64})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
@@ -270,8 +303,12 @@ def upload_image():
             try:
                 from PIL import Image
                 import numpy as np
-                import pillow_heif
-                pillow_heif.register_heif_opener()
+                try:
+                    import pillow_heif
+                    pillow_heif.register_heif_opener()
+                except ImportError:
+                    print("pillow-heif not available, HEIC uploads will fail.")
+                
                 pil_img = Image.open(filepath).convert('RGB')
                 frame = np.array(pil_img)
                 frame = frame[:, :, ::-1].copy() # Convert RGB to BGR
