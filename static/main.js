@@ -150,16 +150,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         clientCanvas.width = clientWebcam.videoWidth;
         clientCanvas.height = clientWebcam.videoHeight;
-        const ctx = clientCanvas.getContext('2d');
-        ctx.drawImage(clientWebcam, 0, 0, clientCanvas.width, clientCanvas.height);
-
-        // Compress heavily for cloud uploads (0.5 quality JPEG at 320px)
+        // Compress heavily for cloud uploads (0.6 quality JPEG at 640px)
         const smallCanvas = document.createElement('canvas');
-        smallCanvas.width = 320;
-        smallCanvas.height = Math.round(clientCanvas.height * 320 / clientCanvas.width);
+        smallCanvas.width = 640;
+        smallCanvas.height = Math.round(clientCanvas.height * 640 / clientCanvas.width);
         const sCtx = smallCanvas.getContext('2d');
         sCtx.drawImage(clientCanvas, 0, 0, smallCanvas.width, smallCanvas.height);
-        const base64Data = smallCanvas.toDataURL('image/jpeg', 0.5);
+        const base64Data = smallCanvas.toDataURL('image/jpeg', 0.6);
 
         try {
             const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
@@ -873,4 +870,291 @@ document.addEventListener('DOMContentLoaded', () => {
             loadHistory();
         });
     });
+
+    // --- Surveillance Command Center Logic ---
+    const surveillanceModal = document.getElementById('assign-modal');
+    const closeSurvModal = document.querySelector('.close-modal');
+    const assignBtns = document.querySelectorAll('.assign-btn');
+    const modalFeedIdSpan = document.getElementById('modal-feed-id');
+    const modalBtnWebcam = document.getElementById('modal-btn-webcam');
+    const modalVideoForm = document.getElementById('modal-video-form');
+    const modalVideoInput = document.getElementById('modal-video-input');
+    const surveillanceLogs = document.getElementById('surveillance-logs');
+
+    const addMonitorBtn = document.getElementById('add-monitor-btn');
+    const dynamicMonitorGrid = document.getElementById('dynamic-monitor-grid');
+
+    let activeAssignFeed = null;
+    let monitorCount = 0;
+
+    // Dynamic monitor registry
+    const monitors = {};
+
+    if (surveillanceModal) {
+        // Close Modal
+        closeSurvModal.addEventListener('click', () => {
+            surveillanceModal.style.display = 'none';
+        });
+
+        window.addEventListener('click', (e) => {
+            if (e.target === surveillanceModal) surveillanceModal.style.display = 'none';
+        });
+
+        // Option 1: Live Webcam
+        modalBtnWebcam.addEventListener('click', async () => {
+            if (!activeAssignFeed) return;
+            surveillanceModal.style.display = 'none';
+            await startMonitorWebcam(activeAssignFeed);
+        });
+
+        // Option 2: Video File
+        modalVideoForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (!activeAssignFeed || !modalVideoInput.files.length) return;
+            surveillanceModal.style.display = 'none';
+
+            const file = modalVideoInput.files[0];
+            startMonitorVideo(activeAssignFeed, file);
+        });
+    }
+
+    // Function to dynamically add a new monitor to the grid
+    function addMonitor(isFirst = false) {
+        if (Object.keys(monitors).length >= 150) {
+            alert('Maximum capacity of 150 cameras reached.');
+            return;
+        }
+
+        let camName = `CAM ${monitorCount + 1}`;
+        if (!isFirst) {
+            const inputName = prompt("Enter Camera Name/Location:", camName);
+            if (!inputName) return; // User cancelled
+            camName = inputName.substring(0, 30).toUpperCase(); // Limit length and uppercase
+        }
+
+        monitorCount++;
+        const feedId = monitorCount;
+
+        // Initialize state
+        monitors[feedId] = { stream: null, interval: null, processing: false, name: camName };
+
+        // Create HTML structure
+        const monitorDiv = document.createElement('div');
+        monitorDiv.className = 'monitor-feed glow-card';
+        monitorDiv.innerHTML = `
+            <div class="monitor-header">
+                <span class="monitor-id">${camName} : UNASSIGNED</span>
+                <span class="status-dot"></span>
+            </div>
+            <div class="video-container" id="feed-${feedId}-container">
+                <div class="placeholder-overlay">AWAITING FEED...</div>
+                <video id="feed-${feedId}-video" autoplay playsinline style="display:none;"></video>
+                <img id="feed-${feedId}-result" src="" style="display:none;">
+                <canvas id="feed-${feedId}-canvas" style="display:none;"></canvas>
+            </div>
+            <div class="monitor-controls">
+                <button class="btn btn-outline btn-sm assign-btn" data-feed="${feedId}">Assign Source</button>
+                <button class="btn btn-danger btn-sm remove-btn" data-feed="${feedId}" style="margin-left: 10px; border-color: red; color: red;">Remove</button>
+            </div>
+        `;
+
+        dynamicMonitorGrid.appendChild(monitorDiv);
+
+        // Attach Assign Button Listener
+        const assignBtn = monitorDiv.querySelector('.assign-btn');
+        assignBtn.addEventListener('click', () => {
+            activeAssignFeed = feedId;
+            modalFeedIdSpan.textContent = monitors[feedId].name;
+            surveillanceModal.style.display = 'flex';
+        });
+
+        // Attach Remove Button Listener
+        const removeBtn = monitorDiv.querySelector('.remove-btn');
+        removeBtn.addEventListener('click', () => {
+            cleanupMonitor(feedId);
+            delete monitors[feedId];
+            monitorDiv.remove();
+        });
+    }
+
+    if (addMonitorBtn) {
+        addMonitorBtn.addEventListener('click', () => {
+            addMonitor();
+        });
+
+        // Add one default monitor to start without prompting
+        addMonitor(true);
+    }
+
+    function cleanupMonitor(feedId) {
+        const mon = monitors[feedId];
+        if (mon.interval) { clearInterval(mon.interval); mon.interval = null; }
+        if (mon.stream) { mon.stream.getTracks().forEach(t => t.stop()); mon.stream = null; }
+
+        const video = document.getElementById(`feed-${feedId}-video`);
+        const result = document.getElementById(`feed-${feedId}-result`);
+        const overlay = document.querySelector(`#feed-${feedId}-container .placeholder-overlay`);
+        const dot = document.querySelector(`#feed-${feedId}-container`).parentElement.querySelector('.status-dot');
+        const btn = document.querySelector(`.assign-btn[data-feed="${feedId}"]`);
+
+        if (video) { video.srcObject = null; video.src = ''; video.style.display = 'none'; }
+        if (result) { result.src = ''; result.style.display = 'none'; }
+        if (overlay) { overlay.textContent = 'OFFLINE'; overlay.style.display = 'block'; }
+        if (dot) dot.classList.remove('active');
+        if (btn) btn.textContent = 'Assign Source';
+    }
+
+    async function startMonitorWebcam(feedId) {
+        cleanupMonitor(feedId);
+        const video = document.getElementById(`feed-${feedId}-video`);
+        const overlay = document.querySelector(`#feed-${feedId}-container .placeholder-overlay`);
+        const dot = document.querySelector(`#feed-${feedId}-container`).parentElement.querySelector('.status-dot');
+        const btn = document.querySelector(`.assign-btn[data-feed="${feedId}"]`);
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+            monitors[feedId].stream = stream;
+            video.srcObject = stream;
+            video.style.display = 'block';
+            overlay.style.display = 'none';
+            dot.classList.add('active');
+            btn.textContent = 'Stop Feed';
+
+            // Re-assign click to stop
+            btn.onclick = (e) => {
+                e.preventDefault();
+                cleanupMonitor(feedId);
+                btn.onclick = null; // reset to open modal via standard listener
+            };
+
+            logIncident(`[${monitors[feedId].name}] Live uplink established.`, 'system');
+
+            // Start ML processing loop (~2 FPS per monitor to save CPU/Network)
+            monitors[feedId].interval = setInterval(() => processMonitorFrame(feedId), 500);
+
+        } catch (err) {
+            console.error(err);
+            alert("Could not access camera: " + err.message);
+            cleanupMonitor(feedId);
+        }
+    }
+
+    function startMonitorVideo(feedId, file) {
+        cleanupMonitor(feedId);
+        const video = document.getElementById(`feed-${feedId}-video`);
+        const overlay = document.querySelector(`#feed-${feedId}-container .placeholder-overlay`);
+        const dot = document.querySelector(`#feed-${feedId}-container`).parentElement.querySelector('.status-dot');
+        const btn = document.querySelector(`.assign-btn[data-feed="${feedId}"]`);
+
+        const url = URL.createObjectURL(file);
+        video.src = url;
+        video.loop = true;
+        video.muted = true;
+        video.play();
+
+        video.style.display = 'block';
+        overlay.style.display = 'none';
+        dot.classList.add('active');
+        btn.textContent = 'Stop Feed';
+
+        btn.onclick = (e) => {
+            e.preventDefault();
+            URL.revokeObjectURL(url);
+            cleanupMonitor(feedId);
+            btn.onclick = null;
+        };
+
+        logIncident(`[${monitors[feedId].name}] Processing local video archive.`, 'system');
+
+        // Start ML processing loop
+        monitors[feedId].interval = setInterval(() => processMonitorFrame(feedId), 500);
+    }
+
+    async function processMonitorFrame(feedId) {
+        const mon = monitors[feedId];
+        if (mon.processing) return; // Prevent overlapping requests
+
+        const video = document.getElementById(`feed-${feedId}-video`);
+        const canvas = document.getElementById(`feed-${feedId}-canvas`);
+        const resultImg = document.getElementById(`feed-${feedId}-result`);
+
+        if (!video || !canvas || video.paused || video.ended || !video.videoWidth) return;
+
+        mon.processing = true;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Compress
+        const smallCanvas = document.createElement('canvas');
+        smallCanvas.width = 640;
+        smallCanvas.height = Math.round(canvas.height * 640 / canvas.width);
+        const sCtx = smallCanvas.getContext('2d');
+        sCtx.drawImage(canvas, 0, 0, smallCanvas.width, smallCanvas.height);
+        const base64Data = smallCanvas.toDataURL('image/jpeg', 0.5);
+
+        try {
+            const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const response = await fetch('/process_webcam_frame', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ image: base64Data })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.image) {
+                    video.style.display = 'none';
+                    resultImg.style.display = 'block';
+                    resultImg.src = `data:image/jpeg;base64,${data.image}`;
+
+                    // Log real detections from the backend
+                    if (data.detections && data.detections.length > 0) {
+                        data.detections.forEach(threat => {
+                            // Don't spam the exact same threat from the same camera too quickly
+                            if (mon.lastThreat === threat && (Date.now() - mon.lastThreatTime < 3000)) return;
+
+                            let type = 'system';
+                            if (['person'].includes(threat)) type = 'person';
+                            if (['car', 'truck', 'bus', 'motorcycle', 'bicycle'].includes(threat)) type = 'vehicle';
+                            if (['knife', 'gun', 'backpack', 'suitcase'].includes(threat)) type = 'threat';
+
+                            logIncident(`CAM ${feedId}: Detected [${threat.toUpperCase()}] in sector.`, type);
+                            mon.lastThreat = threat;
+                            mon.lastThreatTime = Date.now();
+                        });
+                    }
+                }
+            } else if (response.status === 401) {
+                cleanupMonitor(feedId);
+                alert("Please sign in to access surveillance feeds.");
+            }
+        } catch (err) {
+            console.error(`Feed ${feedId} error:`, err);
+        } finally {
+            mon.processing = false;
+        }
+    }
+
+    function logIncident(message, type) {
+        if (!surveillanceLogs) return;
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${type}`;
+
+        const now = new Date();
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+        entry.innerHTML = `<span class="time">[${timeStr}]</span><span class="msg">${message}</span>`;
+        surveillanceLogs.insertBefore(entry, surveillanceLogs.firstChild);
+
+        // Keep max 50 entries
+        if (surveillanceLogs.children.length > 50) {
+            surveillanceLogs.removeChild(surveillanceLogs.lastChild);
+        }
+    }
 });

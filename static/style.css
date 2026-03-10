@@ -1093,3 +1093,222 @@ input[type=range]::-webkit-slider-runnable-track {
     color: var(--neon-cyan);
     margin-top: 0.5rem;
 }
+
+/* --- Surveillance Command Center --- */
+.surveillance-container {
+    display: grid;
+    grid-template-columns: 3fr 1fr;
+    gap: 1.5rem;
+    margin-top: 2rem;
+    min-height: 70vh;
+}
+
+.monitor-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 1.5rem;
+}
+
+.monitor-feed {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+    background: rgba(0, 5, 10, 0.8);
+}
+
+.monitor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 255, 255, 0.1);
+    border-bottom: 1px solid var(--neon-cyan);
+    font-size: 0.8rem;
+    font-family: 'Roboto Mono', monospace;
+    color: var(--neon-cyan);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: red;
+    box-shadow: 0 0 5px red;
+}
+
+.status-dot.active {
+    background: #0f0;
+    box-shadow: 0 0 5px #0f0;
+    animation: blink 1s infinite alternate;
+}
+
+.video-container {
+    flex: 1;
+    position: relative;
+    background: #000;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.video-container video,
+.video-container img,
+.video-container canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.placeholder-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(0, 255, 255, 0.3);
+    font-family: 'Roboto Mono', monospace;
+    font-size: 1.2rem;
+    letter-spacing: 2px;
+    z-index: 10;
+    text-align: center;
+}
+
+.monitor-controls {
+    padding: 0.5rem;
+    display: flex;
+    justify-content: center;
+    background: rgba(0, 10, 20, 0.8);
+    border-top: 1px solid var(--border-color);
+}
+
+.threat-log-sidebar {
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 10, 20, 0.8);
+    padding: 1rem;
+}
+
+.sidebar-title {
+    color: var(--neon-cyan);
+    font-size: 1rem;
+    letter-spacing: 2px;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+    text-align: center;
+}
+
+.log-entries {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.8rem;
+}
+
+.log-entry {
+    background: rgba(0, 255, 255, 0.05);
+    padding: 0.5rem;
+    border-left: 2px solid var(--text-muted);
+}
+
+.log-entry.system {
+    border-left-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+}
+
+.log-entry.person {
+    border-left-color: #0f0;
+    color: #0f0;
+}
+
+.log-entry.vehicle {
+    border-left-color: #ffa500;
+    color: #ffa500;
+}
+
+.log-entry.threat {
+    border-left-color: red;
+    color: red;
+    background: rgba(255, 0, 0, 0.1);
+}
+
+.log-entry .time {
+    opacity: 0.7;
+    margin-right: 0.5rem;
+}
+
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(5px);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background: var(--bg-color);
+    padding: 2rem;
+    border-radius: 8px;
+    border: 1px solid var(--neon-cyan);
+    width: 90%;
+    max-width: 500px;
+    position: relative;
+}
+
+.close-modal {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    color: var(--neon-cyan);
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close-modal:hover {
+    color: #fff;
+}
+
+.modal-options {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.option-group {
+    background: rgba(0, 255, 255, 0.05);
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    text-align: center;
+}
+
+.option-group h4 {
+    margin-bottom: 1rem;
+    color: var(--text-muted);
+}
+
+.option-divider {
+    text-align: center;
+    color: var(--text-muted);
+    font-weight: bold;
+    position: relative;
+    padding: 10px 0;
+}

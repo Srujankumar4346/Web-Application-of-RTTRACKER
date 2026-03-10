@@ -31,6 +31,7 @@
         <ul class="nav-links">
             <li><a href="#" class="nav-btn" data-target="simulation">Simulation</a></li>
             <li><a href="#" class="nav-btn" data-target="analytics">Analytics</a></li>
+            <li><a href="#" class="nav-btn" data-target="surveillance">Surveillance</a></li>
             <li><a href="#" class="nav-btn" data-target="history">History</a></li>
             <li><a href="#" class="nav-btn" data-target="team">Team</a></li>
             <li id="clerk-auth-container"
@@ -231,7 +232,54 @@
             </div>
         </section>
 
-        <!-- Analytics Section -->
+        <!-- Surveillance Command Center Section -->
+        <section id="surveillance" class="page-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 class="section-title glow-text" style="margin-bottom: 0;">Surveillance Command Center</h2>
+                <button id="add-monitor-btn" class="btn btn-primary btn-glow">+ Add Monitor Feed</button>
+            </div>
+            <div class="surveillance-container">
+                <div class="monitor-grid" id="dynamic-monitor-grid">
+                    <!-- Dynamic monitors will be appended here -->
+                </div>
+
+                <!-- Threat Log Sidebar -->
+                <div class="threat-log-sidebar glow-card">
+                    <h3 class="sidebar-title">INCIDENT LOG</h3>
+                    <div class="log-entries" id="surveillance-logs">
+                        <div class="log-entry system">
+                            <span class="time">[SYST]</span>
+                            <span class="msg">Surveillance uplink established. Awaiting feeds...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal for Assigning Source -->
+            <div id="assign-modal" class="modal">
+                <div class="modal-content glow-card">
+                    <span class="close-modal">&times;</span>
+                    <h3>Assign Feed to <span id="modal-feed-id" class="neon-text"></span></h3>
+
+                    <div class="modal-options mt-4">
+                        <div class="option-group">
+                            <h4>Option 1: Live Webcam</h4>
+                            <button class="btn btn-primary" id="modal-btn-webcam">Connect Webcam</button>
+                        </div>
+
+                        <div class="option-divider">OR</div>
+
+                        <div class="option-group">
+                            <h4>Option 2: Video File</h4>
+                            <form id="modal-video-form">
+                                <input type="file" id="modal-video-input" accept="video/mp4,video/x-m4v,video/*">
+                                <button type="submit" class="btn btn-outline mt-2">Load Video</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
         <section id="analytics" class="page-section">
             <h2 class="section-title glow-text">Neural Intelligence Command Center</h2>
             <div class="dashboard-grid">

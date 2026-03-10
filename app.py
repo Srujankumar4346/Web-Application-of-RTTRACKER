@@ -108,11 +108,11 @@ def process_frame(frame, tracking=True):
         
     with model_lock:
         if tracking:
-            # Use imgsz=320 to drastically accelerate CPU processing speed
-            results = model.track(frame, conf=conf_thresh, iou=iou_thresh, persist=True, verbose=False, imgsz=320)
+            # Removed imgsz to restore detection accuracy
+            results = model.track(frame, conf=conf_thresh, iou=iou_thresh, persist=True, verbose=False)
         else:
-            # For static images: use 256 to reduce peak RAM footprint on Cloud free tiers
-            results = model.predict(frame, conf=conf_thresh, iou=iou_thresh, verbose=False, imgsz=256)
+            # Removed imgsz to restore detection accuracy
+            results = model.predict(frame, conf=conf_thresh, iou=iou_thresh, verbose=False)
         
     res = results[0]
     annotated_frame = res.plot()
@@ -183,12 +183,10 @@ def generate_frames(source):
                 continue
             break
             
-        # For non-live video performance: Skip alternate frames to maintain pseudo real-time speed on CPU
+        # Skip alternate frames for video performance if needed
         if not is_live and (frame_count % 2 == 0):
             continue
         
-        # Resize frame significantly to drastically speed up processing time (480x360)
-        frame = cv2.resize(frame, (480, 360))
         annotated_frame = process_frame(frame, tracking=True)
         
         ret, buffer = cv2.imencode('.jpg', annotated_frame)
@@ -263,16 +261,25 @@ def process_webcam_frame():
         if frame is None:
             return jsonify({'error': 'Invalid framedata'}), 400
             
-        # Resize to standard size for faster inference
-        frame = cv2.resize(frame, (480, 360))
         annotated_frame = process_frame(frame, tracking=True)
+        
+        # Extract current detections for the incident log
+        detections = []
+        with model_lock:
+            # Re-run prediction just to get the raw classes easily without altering global trackers
+            # since process_frame only returns the annotated image
+            results = model(frame, verbose=False, conf=app_config['confidence'])
+            if len(results) > 0 and results[0].boxes:
+                for box in results[0].boxes:
+                    cls_id = int(box.cls[0])
+                    detections.append(model.names[cls_id])
         
         ret, buffer = cv2.imencode('.jpg', annotated_frame)
         if not ret:
             return jsonify({'error': 'Encoding failed'}), 500
             
         out_b64 = base64.b64encode(buffer).decode('utf-8')
-        return jsonify({'image': out_b64})
+        return jsonify({'image': out_b64, 'detections': list(set(detections))})
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -313,8 +320,6 @@ def upload_image():
             except Exception as e:
                 return jsonify({'error': f'Unsupported image format: {file.filename}'}), 400
             
-        # Standardize image size to 640x480 to match webcam buffers & prevent tracker state size crashes
-        frame = cv2.resize(frame, (640, 480))
         annotated_frame = process_frame(frame, tracking=False)
         
         ret, buffer = cv2.imencode('.jpg', annotated_frame)
