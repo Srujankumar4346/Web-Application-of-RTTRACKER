@@ -182,9 +182,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         formData.append('image', file);
 
                         try {
-                            const response = await fetch('/upload_image', { method: 'POST', body: formData });
+                            const token = await Clerk.session.getToken();
+                            const response = await fetch('/upload_image', {
+                                method: 'POST',
+                                body: formData,
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            });
                             const data = await response.json();
-                            if (data.image) {
+                            if (data.error) {
+                                console.error('Image processing error:', data.error);
+                                alert('Error: ' + data.error);
+                            } else if (data.image) {
                                 slotImg.src = `data:image/jpeg;base64,${data.image}`;
                                 slotParent.style.opacity = '1';
                             }
@@ -212,11 +220,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData();
         formData.append('image', file);
         try {
-            const response = await fetch('/upload_image', { method: 'POST', body: formData });
+            const token = await window.Clerk ? await window.Clerk.session.getToken() : null;
+            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+            const response = await fetch('/upload_image', {
+                method: 'POST',
+                body: formData,
+                headers: headers
+            });
             const data = await response.json();
+
+            if (response.status === 401) {
+                alert("Please sign in to run detections!");
+                resetDisplay();
+                return;
+            }
+
+            if (data.error) {
+                alert("Error: " + data.error);
+                resetDisplay();
+                return;
+            }
+
             if (data.image) showResult(`data:image/jpeg;base64,${data.image}`);
         } catch (err) {
             console.error(err);
+            alert("Network error processing image.");
+            resetDisplay();
         }
     }
 
@@ -235,11 +265,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('video', file);
 
                 try {
+                    const token = await window.Clerk ? await window.Clerk.session.getToken() : null;
+                    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
                     const response = await fetch('/upload_video', {
                         method: 'POST',
-                        body: formData
+                        body: formData,
+                        headers: headers
                     });
                     const data = await response.json();
+
+                    if (response.status === 401) {
+                        alert("Please sign in to run detections!");
+                        resetDisplay();
+                        return;
+                    }
 
                     if (data.error) {
                         alert(`Error on file ${file.name}: ${data.error}`);
@@ -315,6 +355,48 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const lineCtx = document.getElementById('lineChart');
+    let lineChartInst = null;
+    if (lineCtx) {
+        lineChartInst = new Chart(lineCtx, {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Total Objects', data: [], borderColor: '#00ffff', backgroundColor: 'rgba(0, 255, 255, 0.1)', borderWidth: 2, fill: true, tension: 0.4 }] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { color: 'rgba(0, 255, 255, 0.1)' }, ticks: { maxTicksLimit: 10 } },
+                    y: { beginAtZero: true, grid: { color: 'rgba(0, 255, 255, 0.1)' }, suggestedMax: 10 }
+                },
+                animation: { duration: 0 } // Disable animation for heartbeat effect
+            }
+        });
+    }
+
+    const radarCtx = document.getElementById('radarChart');
+    let radarChartInst = null;
+    if (radarCtx) {
+        radarChartInst = new Chart(radarCtx, {
+            type: 'radar',
+            data: { labels: ['Searching'], datasets: [{ label: 'Composition', data: [0], backgroundColor: 'rgba(176, 0, 255, 0.3)', borderColor: '#b000ff', pointBackgroundColor: '#00ffff', borderWidth: 2 }] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    r: {
+                        angleLines: { color: 'rgba(0, 255, 255, 0.2)' },
+                        grid: { color: 'rgba(0, 255, 255, 0.2)' },
+                        pointLabels: { color: '#84c0c6', font: { size: 11 } },
+                        ticks: { display: false, beginAtZero: true }
+                    }
+                },
+                animation: { duration: 400 }
+            }
+        });
+    }
+
     const pieCtx = document.getElementById('pieChart');
     let pieChartInst = null;
     if (pieCtx) {
@@ -357,26 +439,37 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('val-ptime').textContent = fps > 0 ? `${Math.round(1000 / fps)} ms` : '0 ms';
         animateValue(document.getElementById('val-fps'), Math.floor(lastData.fps), Math.floor(fps), 500, v => `${v.toFixed(1)}`);
 
-        // --- Circular Charts ---
-        document.getElementById('conf-text').textContent = `${confidence}%`;
-        document.getElementById('conf-circle').style.transition = 'stroke-dasharray 1s ease-out';
-        document.getElementById('conf-circle').setAttribute('stroke-dasharray', `${confidence}, 100`);
+        // --- Live Event Stream Logic ---
+        const eventStream = document.getElementById('event-stream');
+        if (eventStream && total > 0) {
+            const timeStr = new Date().toLocaleTimeString();
+            // Create a short summary of objects detected
+            const objSummary = Object.entries(objs).map(([k, v]) => `${v}x ${k}`).join(', ');
+            const newLog = document.createElement('div');
+            newLog.style.animation = 'fadeIn 0.5s';
+            // Alternating colors for logs
+            const color = Math.random() > 0.5 ? 'var(--neon-cyan)' : '#b000ff';
+            newLog.innerHTML = `<span style="color:${color}">[${timeStr}]</span> Target Acquired &bull; ${objSummary} &bull; Conf: ${confidence}%`;
+            eventStream.appendChild(newLog);
 
-        // --- Progress Bars ---
-        document.getElementById('pb-conf-val').textContent = `${confidence}%`;
-        document.getElementById('pb-conf').style.width = `${confidence}%`;
+            // Keep only latest 50 logs
+            if (eventStream.children.length > 50) {
+                eventStream.removeChild(eventStream.firstChild);
+            }
+            // Auto scroll to bottom
+            eventStream.scrollTop = eventStream.scrollHeight;
+        } else if (eventStream && Object.keys(objs).length === 0 && Math.random() > 0.7) {
+            // Occasional idle log
+            const timeStr = new Date().toLocaleTimeString();
+            const newLog = document.createElement('div');
+            newLog.style.color = 'var(--text-muted)';
+            newLog.innerHTML = `[${timeStr}] System Idle. Scanning sector...`;
+            eventStream.appendChild(newLog);
+            if (eventStream.children.length > 50) eventStream.removeChild(eventStream.firstChild);
+            eventStream.scrollTop = eventStream.scrollHeight;
+        }
 
-        const fpsPercent = Math.min(100, (fps / 30) * 100).toFixed(0);
-        document.getElementById('pb-fps-val').textContent = `${fpsPercent}%`;
-        document.getElementById('pb-fps').style.width = `${fpsPercent}%`;
-
-        document.getElementById('pb-acc-val').textContent = `${accuracy}%`;
-        document.getElementById('pb-acc').style.width = `${accuracy}%`;
-
-        document.getElementById('pb-motion-val').textContent = `${motion}%`;
-        document.getElementById('pb-motion').style.width = `${motion}%`;
-
-        // Update Detected Objects List
+        // Update Detected Objects List (Bottom Grid)
         const listContainer = document.getElementById('objects-list');
         listContainer.innerHTML = '';
 
@@ -391,10 +484,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // --- Update Chart.js Graphics ---
-        if (barChartInst && pieChartInst) {
-            const labels = Object.keys(objs);
-            const counts = Object.values(objs);
+        const labels = Object.keys(objs);
+        const counts = Object.values(objs);
 
+        if (lineChartInst) {
+            // Heartbeat monitor logic: push new data, shift old data
+            const timeLabel = new Date().toLocaleTimeString([], { hour12: false });
+            lineChartInst.data.labels.push(timeLabel);
+            lineChartInst.data.datasets[0].data.push(total);
+
+            // Keep max 20 data points on screen
+            if (lineChartInst.data.labels.length > 20) {
+                lineChartInst.data.labels.shift();
+                lineChartInst.data.datasets[0].data.shift();
+            }
+            lineChartInst.update('none'); // Update without animation for a smoother rolling effect
+        }
+
+        if (radarChartInst && labels.length > 0) {
+            radarChartInst.data.labels = labels;
+            radarChartInst.data.datasets[0].data = counts;
+            radarChartInst.update();
+        } else if (radarChartInst) {
+            // Default empty radar
+            radarChartInst.data.labels = ['Searching'];
+            radarChartInst.data.datasets[0].data = [0];
+            radarChartInst.update();
+        }
+
+        if (barChartInst && pieChartInst) {
             barChartInst.data.labels = labels;
             barChartInst.data.datasets[0].data = counts;
             barChartInst.update('active');
@@ -463,4 +581,202 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchAdminConfig();
     pollInterval = setInterval(fetchAnalytics, 2000);
     fetchAnalytics();
+
+    // --- Advanced UI: Particle Network Background ---
+    function initParticles() {
+        const canvas = document.getElementById('particle-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let particles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        const mouse = { x: -1000, y: -1000, radius: 150 };
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.x;
+            mouse.y = e.y;
+        });
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 1.5;
+                this.vy = (Math.random() - 0.5) * 1.5;
+                this.radius = Math.random() * 2 + 1;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+
+                // Mouse interaction (repel)
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < mouse.radius) {
+                    const force = (mouse.radius - dist) / mouse.radius;
+                    this.x -= (dx / dist) * force * 2;
+                    this.y -= (dy / dist) * force * 2;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 255, 255, 0.4)';
+                ctx.fill();
+            }
+        }
+
+        for (let i = 0; i < 100; i++) particles.push(new Particle());
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update();
+                particles[i].draw();
+
+                // Connect particles
+                for (let j = i; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 120) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(0, 255, 255, ${1 - dist / 120})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+        animate();
+    }
+    initParticles();
+
+    // --- Advanced UI: Hacker Terminal ---
+    function initTerminal() {
+        const terminalOutput = document.getElementById('terminal-content');
+        if (!terminalOutput) return;
+
+        const bootSequence = [
+            `> INITIALIZING NEURAL NETWORK...`,
+            `> LOADING YOLOv8 WEIGHTS [OK]`,
+            `> ESTABLISHING CLERK AUTH... SUCCESS`,
+            `> SUPABASE UPLINK: SECURE [ENCRYPTED]`,
+            `> AWAITING SENSOR INPUT...`
+        ];
+
+        let lineIdx = 0;
+        let charIdx = 0;
+
+        function typeLine() {
+            if (lineIdx < bootSequence.length) {
+                const line = bootSequence[lineIdx];
+                if (charIdx < line.length) {
+                    terminalOutput.innerHTML += line.charAt(charIdx);
+                    charIdx++;
+                    setTimeout(typeLine, Math.random() * 30 + 10);
+                } else {
+                    terminalOutput.innerHTML += '<br>';
+                    lineIdx++;
+                    charIdx = 0;
+                    setTimeout(typeLine, 400); // pause between lines
+                }
+            } else {
+                // Done booting, add blinking cursor
+                terminalOutput.innerHTML += `<span class="blink-cursor">_</span>`;
+            }
+        }
+
+        // Start booting slightly after page load
+        setTimeout(typeLine, 1000);
+    }
+
+    // Run terminal only when home tab is active. We can just run it once.
+    if (document.querySelector('.nav-btn[data-target="home"]').classList.contains('active')) {
+        initTerminal();
+    }
+
+    // --- History Gallery Logic ---
+    async function loadHistory() {
+        const grid = document.getElementById('history-grid');
+        if (!grid) return;
+
+        try {
+            const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
+            if (!token) {
+                grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 3rem;">AUTHENTICATION REQUIRED. PLEASE SIGN IN TO ACCESS ARCHIVES.</div>';
+                return;
+            }
+
+            grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; padding: 3rem;">RETRIVING UPLINK DATA...</div>';
+
+            const response = await fetch('/history', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error('Failed to fetch history');
+
+            const data = await response.json();
+
+            if (data.length === 0) {
+                grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 3rem;">NO PREVIOUS DETECTIONS FOUND.</div>';
+                return;
+            }
+
+            grid.innerHTML = '';
+            data.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'history-card';
+
+                const date = new Date(item.created_at).toLocaleString();
+                const objs = Object.entries(item.objects_detected || {})
+                    .map(([name, count]) => `${name} (${count})`)
+                    .join(', ') || 'No objects';
+
+                card.innerHTML = `
+                    <img src="${item.media_url}" alt="Detection" loading="lazy">
+                    <div class="card-content">
+                        <div class="card-date">${date}</div>
+                        <div class="card-objs">${objs}</div>
+                        <div class="card-type">${item.media_type}</div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        } catch (err) {
+            console.error(err);
+            grid.innerHTML = `<div class="cyber-text" style="grid-column: 1/-1; text-align: center; color: red; padding: 3rem;">UPLINK ERROR: ${err.message}</div>`;
+        }
+    }
+
+    // Initialize History Refresh
+    const refreshBtn = document.getElementById('refresh-history');
+    if (refreshBtn) refreshBtn.addEventListener('click', loadHistory);
+
+    // Load history when the history tab is clicked
+    document.querySelectorAll('.nav-btn[data-target="history"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            loadHistory();
+        });
+    });
 });

@@ -3,14 +3,64 @@ import cv2
 import time
 import base64
 import threading
+import uuid
 from flask import Flask, render_template, Response, request, jsonify
 from ultralytics import YOLO
-import os
+import jwt
+import requests
+from dotenv import load_dotenv
+from supabase import create_client, Client
+
+load_dotenv()
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+# Initialize Supabase
+supabase_url = os.environ.get("SUPABASE_URL")
+supabase_key = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(supabase_url, supabase_key) if supabase_url and supabase_key else None
+
+# We use the publishable key to find the JWKS endpoint
+CLERK_FRONTEND_API_URL = "https://wondrous-reindeer-57.clerk.accounts.dev"
+JWKS_URL = f"{CLERK_FRONTEND_API_URL}/.well-known/jwks.json"
+
+def get_auth_user():
+    """Helper to verify Clerk session from request headers."""
+    auth_header = request.headers.get("Authorization")
+    print(f"[AUTH DEBUG] Auth header present: {bool(auth_header)}")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        print("[AUTH DEBUG] Missing or invalid Authorization header format.")
+        return None
+    
+    token = auth_header.split(" ")[1]
+    print(f"[AUTH DEBUG] Token length: {len(token)}")
+    try:
+        # Fetch the public keys from Clerk
+        jwks_client = jwt.PyJWKClient(JWKS_URL)
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+
+        # Verify and decode the JWT
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            leeway=60, # Allow for 60 seconds of clock skew
+            options={
+                "verify_aud": False,
+                "verify_iss": False
+            }
+        )
+        user_id = payload.get("sub")
+        return user_id
+    except jwt.ExpiredSignatureError:
+        print("[AUTH DEBUG] Token has expired.")
+    except jwt.InvalidTokenError as e:
+        print(f"[AUTH DEBUG] Invalid token: {e}")
+    except Exception as e:
+        print(f"[AUTH DEBUG] Unexpected Auth error: {e}")
+    return None
 
 # Fetch default config, but we no longer override on boot for all users
 default_config = {
@@ -94,6 +144,9 @@ def generate_frames(source):
     # Use DirectShow backend on Windows for reliable webcam access if source is 0
     if str(source) == '0':
         cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            print("CAP_DSHOW failed, falling back to default backend...")
+            cap = cv2.VideoCapture(0)
         
         # Optimize Webcam Resolution for Faster AI Processing
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -116,6 +169,11 @@ def generate_frames(source):
     while cap.isOpened():
         loop_start = time.time()
         
+        # Handle Windows Webcam Buffer Lag
+        if is_live:
+            for _ in range(4):
+                cap.grab()
+                
         success, frame = cap.read()
         frame_count += 1
         
@@ -191,43 +249,125 @@ def video():
 
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image provided'}), 400
+    user_id = get_auth_user()
+    if not user_id:
+        # Require authentication to upload and track analytics
+        return jsonify({'error': 'Unauthorized: Please sign in to detect targets.'}), 401
+
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'No image provided'}), 400
+            
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'error': 'Empty filename'}), 400
+            
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(filepath)
         
-    file = request.files['image']
-    if file.filename == '':
-        return jsonify({'error': 'Empty filename'}), 400
+        frame = cv2.imread(filepath)
+        if frame is None:
+            try:
+                from PIL import Image
+                import numpy as np
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+                pil_img = Image.open(filepath).convert('RGB')
+                frame = np.array(pil_img)
+                frame = frame[:, :, ::-1].copy() # Convert RGB to BGR
+            except Exception as e:
+                return jsonify({'error': f'Unsupported image format: {file.filename}'}), 400
+            
+        # Standardize image size to 640x480 to match webcam buffers & prevent tracker state size crashes
+        frame = cv2.resize(frame, (640, 480))
+        annotated_frame = process_frame(frame, tracking=False)
         
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-    file.save(filepath)
-    
-    frame = cv2.imread(filepath)
-    if frame is None:
-        return jsonify({'error': 'Invalid image format'}), 400
-        
-    # Standardize image size to 640x480 to match webcam buffers & prevent tracker state size crashes
-    frame = cv2.resize(frame, (640, 480))
-    annotated_frame = process_frame(frame, tracking=False)
-    
-    ret, buffer = cv2.imencode('.jpg', annotated_frame)
-    if not ret:
-        return jsonify({'error': 'Could not encode processed image'}), 500
-        
-    img_base64 = base64.b64encode(buffer).decode('utf-8')
-    return jsonify({'image': img_base64})
+        ret, buffer = cv2.imencode('.jpg', annotated_frame)
+        if not ret:
+            return jsonify({'error': 'Could not encode processed image'}), 500
+            
+        # Save event data to Supabase
+        if supabase:
+            try:
+                # Upload the raw uploaded file first
+                unique_filename = f"{user_id}/{uuid.uuid4()}_{file.filename}"
+                # Pass the filepath string directly to 'upload' instead of a file object
+                supabase.storage.from_("tracking-media").upload(
+                    unique_filename,
+                    filepath,
+                    file_options={"content-type": "image/jpeg"}
+                )
+                media_url = supabase.storage.from_("tracking-media").get_public_url(unique_filename)
+                
+                # Save the analytics state associated with this specific prediction
+                # Since predict updates globals, we grab current analytics_state
+                data = {
+                    "user_id": user_id,
+                    "media_type": "image",
+                    "media_url": media_url,
+                    "total_objects": analytics_state['total_objects'],
+                    "fps": analytics_state['fps'],
+                    "objects_detected": analytics_state['objects_detected']
+                }
+                supabase.table("detection_events").insert(data).execute()
+            except Exception as e:
+                print(f"Supabase sync err: {e}")
+
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+        return jsonify({'image': img_base64})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Backend Exception: {str(e)}'}), 500
 
 @app.route('/upload_video', methods=['POST'])
 def upload_video():
-    if 'video' not in request.files:
-        return jsonify({'error': 'No video provided'}), 400
-        
-    file = request.files['video']
-    if file.filename == '':
-        return jsonify({'error': 'Empty filename'}), 400
-        
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-    file.save(filepath)
-    return jsonify({'video_url': f'/video_file/{file.filename}'})
+    user_id = get_auth_user()
+    if not user_id:
+        return jsonify({'error': 'Unauthorized: Please sign in to detect targets.'}), 401
+    
+    try:
+        if 'video' not in request.files:
+            return jsonify({'error': 'No video provided'}), 400
+            
+        file = request.files['video']
+        if file.filename == '':
+            return jsonify({'error': 'Empty filename'}), 400
+            
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(filepath)
+
+        # Save event data to Supabase
+        if supabase:
+            try:
+                # Upload the raw uploaded video file
+                unique_filename = f"{user_id}/{uuid.uuid4()}_{file.filename}"
+                # Pass the filepath string directly to 'upload' instead of a file object
+                supabase.storage.from_("tracking-media").upload(
+                    unique_filename,
+                    filepath,
+                    file_options={"content-type": "video/mp4"}
+                )
+                media_url = supabase.storage.from_("tracking-media").get_public_url(unique_filename)
+                
+                # Save generic analytics state associated with starting the video
+                data = {
+                    "user_id": user_id,
+                    "media_type": "video",
+                    "media_url": media_url,
+                    "total_objects": 0, # Objects updated live during processing via websockets/polling usually
+                    "fps": 0.0,
+                    "objects_detected": {}
+                }
+                supabase.table("detection_events").insert(data).execute()
+            except Exception as e:
+                print(f"Supabase sync err: {e}")
+
+        return jsonify({'video_url': f'/video_file/{file.filename}'})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Backend Exception: {str(e)}'}), 500
 
 @app.route('/video_file/<filename>')
 def video_file(filename):
@@ -237,6 +377,26 @@ def video_file(filename):
 def get_analytics():
     return jsonify(analytics_state)
 
+
+@app.route('/history')
+def get_history():
+    user_id = get_auth_user()
+    if not user_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    if not supabase:
+        return jsonify({'error': 'Supabase not configured'}), 500
+        
+    try:
+        response = supabase.table("detection_events") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .order("created_at", desc=True) \
+            .execute()
+        return jsonify(response.data)
+    except Exception as e:
+        print(f"History fetch err: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

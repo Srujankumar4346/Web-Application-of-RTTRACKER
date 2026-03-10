@@ -11,9 +11,17 @@
         rel="stylesheet">
     <!-- Chart.js for data visualization -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Clerk Integration -->
+    <script async crossorigin="anonymous"
+        data-clerk-publishable-key="pk_test_d29uZHJvdXMtcmVpbmRlZXItNTcuY2xlcmsuYWNjb3VudHMuZGV2JA"
+        src="https://wondrous-reindeer-57.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+        type="text/javascript"></script>
 </head>
 
 <body>
+    <canvas id="particle-canvas"
+        style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2; pointer-events: none;"></canvas>
     <div class="grid-bg"></div>
     <nav class="navbar">
         <div class="logo-container">
@@ -21,9 +29,15 @@
         </div>
         <ul class="nav-links">
             <li><a href="#" class="nav-btn active" data-target="home">Home</a></li>
+            <li>
             <li><a href="#" class="nav-btn" data-target="simulation">Simulation</a></li>
             <li><a href="#" class="nav-btn" data-target="analytics">Analytics</a></li>
+            <li><a href="#" class="nav-btn" data-target="history">History</a></li>
             <li><a href="#" class="nav-btn" data-target="team">Team</a></li>
+            <li id="clerk-auth-container"
+                style="display: flex; align-items: center; justify-content: center; margin-left: 1rem;">
+                <!-- Clerk UI will mount here -->
+            </li>
         </ul>
     </nav>
 
@@ -31,17 +45,124 @@
         <!-- Home Section -->
         <section id="home" class="page-section active">
             <div class="hero">
-                <h1 class="glow-text title-large">Real-Time Object Tracking</h1>
+                <h1 class="glow-text title-large glitch" data-text="Real-Time Object Tracking">Real-Time Object Tracking
+                </h1>
                 <p class="subtitle">Vision-Based AI Analytics for Real-Time Object Tracking</p>
-                <div class="status-indicator">
-                    <span class="dot pulse"></span> SYSTEM ACTIVE &bull; TRACKING ENABLED
+                <div class="status-indicator glow-card mt-4"
+                    style="margin-bottom: 2rem; padding: 15px 30px; display: inline-flex; align-items: center; gap: 10px;">
+                    <span class="dot pulse"></span>
+                    <span>SYSTEM ACTIVE &bull; TRACKING ENABLED</span>
                 </div>
-                <div class="hero-buttons">
+                <div class="hero-buttons" style="margin-bottom: 3rem;">
                     <button class="btn btn-primary btn-glow"
                         onclick="document.querySelector('.nav-btn[data-target=\'simulation\']').click()">View
                         Simulation</button>
                     <button class="btn btn-outline"
-                        onclick="document.querySelector('.nav-btn[data-target=\'team\']').click()">Learn More</button>
+                        onclick="document.getElementById('features').scrollIntoView({behavior: 'smooth'})">Learn
+                        More</button>
+                </div>
+
+                <!-- Terminal Log Block -->
+                <div class="terminal-box glow-card"
+                    style="text-align: left; max-width: 600px; margin: 0 auto; height: 150px; overflow-y: hidden; font-family: 'Roboto Mono', monospace; font-size: 0.85rem; color: var(--neon-cyan); background: rgba(0, 10, 20, 0.8);">
+                    <div id="terminal-content"></div>
+                </div>
+            </div>
+
+            <!-- Live Metrics Strip -->
+            <div class="metrics-strip glow-card mt-4"
+                style="display: flex; justify-content: space-around; padding: 2rem; margin-top: 4rem;">
+                <div class="metric-item text-center">
+                    <h4
+                        style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">
+                        Total Frames Analyzed</h4>
+                    <div class="cyber-text" style="font-size: 2rem;" id="hero-frames">1,048,576</div>
+                </div>
+                <div class="metric-item text-center">
+                    <h4
+                        style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">
+                        Active AI Engine</h4>
+                    <div class="cyber-text" style="font-size: 2rem;">YOLOv8N</div>
+                </div>
+                <div class="metric-item text-center">
+                    <h4
+                        style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">
+                        Avg Latency</h4>
+                    <div class="cyber-text" style="font-size: 2rem;"><span id="hero-ping">12</span>ms</div>
+                </div>
+                <div class="metric-item text-center">
+                    <h4
+                        style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">
+                        Cloud Storage</h4>
+                    <div class="cyber-text" style="font-size: 2rem; color: #00ffaa; text-shadow: 0 0 10px #00ffaa;">
+                        ONLINE</div>
+                </div>
+            </div>
+
+            <!-- Core Features Grid -->
+            <div id="features" style="margin-top: 5rem;">
+                <h2 class="section-title glow-text" style="font-size: 1.5rem; border-bottom: none;">System Capabilities
+                </h2>
+                <div
+                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; margin-top: 2rem;">
+                    <div class="glow-card" style="text-align: center; padding: 2rem;">
+                        <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Live Webcam Tracking</h3>
+                        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Connect directly to
+                            your local camera feed for instantaneous AI object detection overlaid in real-time.</p>
+                    </div>
+                    <div class="glow-card" style="text-align: center; padding: 2rem;">
+                        <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Batch Image Processing
+                        </h3>
+                        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Upload multiple
+                            high-resolution images simultaneously. The AI processes them in customized multi-threaded
+                            batches.</p>
+                    </div>
+                    <div class="glow-card" style="text-align: center; padding: 2rem;">
+                        <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Video Frame Analysis</h3>
+                        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Submit prerecorded
+                            MP4 files. The engine extracts, analyzes, and streams the tracked frames back to your
+                            dashboard.</p>
+                    </div>
+                    <div class="glow-card" style="text-align: center; padding: 2rem;">
+                        <h3 class="cyber-text" style="margin-bottom: 1rem; font-size: 1.2rem;">Cloud Data Analytics</h3>
+                        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;">Every detection event
+                            is securely logged to a PostgreSQL Supabase database for historical querying and reporting.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- How It Works Workflow -->
+            <div style="margin-top: 5rem; text-align: center; margin-bottom: 4rem;">
+                <h2 class="section-title glow-text"
+                    style="font-size: 1.5rem; margin-bottom: 3rem; border-bottom: none;">Core Workflow</h2>
+                <div style="display: flex; justify-content: center; align-items: center; gap: 2rem; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <div class="cyber-text" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;">O1</div>
+                        <h4
+                            style="color: #fff; margin-bottom: 0.5rem; font-family: var(--font-heading); font-size: 1.2rem; text-transform: uppercase;">
+                            Initialize Source</h4>
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">Select your camera or upload media files
+                            into the system.</p>
+                    </div>
+                    <div style="color: var(--neon-cyan); font-size: 2rem; opacity: 0.5;">&rarr;</div>
+                    <div style="flex: 1; min-width: 200px;">
+                        <div class="cyber-text" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;">O2</div>
+                        <h4
+                            style="color: #fff; margin-bottom: 0.5rem; font-family: var(--font-heading); font-size: 1.2rem; text-transform: uppercase;">
+                            Neural Processing</h4>
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">The backend YOLOv8 model calculates
+                            bounding boxes instantly.</p>
+                    </div>
+                    <div style="color: var(--neon-cyan); font-size: 2rem; opacity: 0.5;">&rarr;</div>
+                    <div style="flex: 1; min-width: 200px;">
+                        <div class="cyber-text" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;">O3</div>
+                        <h4
+                            style="color: #fff; margin-bottom: 0.5rem; font-family: var(--font-heading); font-size: 1.2rem; text-transform: uppercase;">
+                            Data Extraction</h4>
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">Metrics are visualized live and stored
+                            in the secure cloud.</p>
+                    </div>
                 </div>
             </div>
         </section>
@@ -95,7 +216,7 @@
                         <div id="mode-image" class="mode-panel">
                             <p>Upload an image for detection.</p>
                             <form id="image-upload-form">
-                                <input type="file" id="image-input" accept="image/*" class="file-input" multiple>
+                                <input type="file" id="image-input" class="file-input" multiple>
                                 <label for="image-input" class="btn btn-outline file-label">Choose Images</label>
                                 <span id="img-file-name" class="file-name"></span>
                                 <button type="submit" class="btn btn-primary btn-glow mt-2">Run Detection</button>
@@ -104,7 +225,7 @@
                         <div id="mode-video" class="mode-panel">
                             <p>Upload a video to process frames with YOLO.</p>
                             <form id="video-upload-form">
-                                <input type="file" id="video-input" accept="video/*" class="file-input" multiple>
+                                <input type="file" id="video-input" class="file-input" multiple>
                                 <label for="video-input" class="btn btn-outline file-label">Choose Videos</label>
                                 <span id="vid-file-name" class="file-name"></span>
                                 <button type="submit" class="btn btn-primary btn-glow mt-2">Process Video</button>
@@ -152,77 +273,36 @@
                     </div>
                 </div>
 
-                <div class="charts-area">
+                <div class="charts-area mt-4" style="grid-template-columns: 1fr;">
                     <div class="chart-box glow-card">
-                        <h3>Performance Metrics (Circular)</h3>
-                        <div class="circular-charts-container">
-                            <div class="circle-chart">
-                                <svg viewBox="0 0 36 36" class="circular-chart cyan">
-                                    <path class="circle-bg"
-                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                    <path class="circle" stroke-dasharray="85, 100"
-                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                    <text x="18" y="20.35" class="percentage">85%</text>
-                                </svg>
-                                <span>Tracking Accuracy</span>
-                            </div>
-                            <div class="circle-chart">
-                                <svg viewBox="0 0 36 36" class="circular-chart cyan">
-                                    <path class="circle-bg"
-                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                    <path class="circle" id="conf-circle" stroke-dasharray="0, 100"
-                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                    <text x="18" y="20.35" class="percentage" id="conf-text">0%</text>
-                                </svg>
-                                <span>Detection Confidence</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="chart-box glow-card progress-bars">
-                        <h3>System Metrics (Progress)</h3>
-                        <div class="progress-item">
-                            <div class="prog-label"><span>Detection Confidence</span> <span id="pb-conf-val">0%</span>
-                            </div>
-                            <div class="prog-bg">
-                                <div class="prog-fill" id="pb-conf" style="width: 0%;"></div>
-                            </div>
-                        </div>
-                        <div class="progress-item">
-                            <div class="prog-label"><span>Motion Intensity</span> <span id="pb-motion-val">45%</span>
-                            </div>
-                            <div class="prog-bg">
-                                <div class="prog-fill" id="pb-motion" style="width: 45%;"></div>
-                            </div>
-                        </div>
-                        <div class="progress-item">
-                            <div class="prog-label"><span>Tracking Accuracy</span> <span id="pb-acc-val">85%</span>
-                            </div>
-                            <div class="prog-bg">
-                                <div class="prog-fill" id="pb-acc" style="width: 85%;"></div>
-                            </div>
-                        </div>
-                        <div class="progress-item">
-                            <div class="prog-label"><span>Frame Rate Utilization</span> <span id="pb-fps-val">0%</span>
-                            </div>
-                            <div class="prog-bg">
-                                <div class="prog-fill" id="pb-fps" style="width: 0%;"></div>
-                            </div>
+                        <h3>Live Detection Stream (Total Targets)</h3>
+                        <div style="position: relative; height: 300px; width: 100%;">
+                            <canvas id="lineChart"></canvas>
                         </div>
                     </div>
                 </div>
 
-                <div class="charts-area mt-4">
+                <div class="charts-area mt-4" style="grid-template-columns: 1fr 1fr 1fr;">
                     <div class="chart-box glow-card">
-                        <h3>Distribution by Class (Bar)</h3>
+                        <h3>Composition (Radar)</h3>
                         <div style="position: relative; height: 250px; width: 100%;">
-                            <canvas id="barChart"></canvas>
+                            <canvas id="radarChart"></canvas>
                         </div>
                     </div>
+
                     <div class="chart-box glow-card">
-                        <h3>Composition Breakdown (Pie)</h3>
+                        <h3>Composition (Donut)</h3>
                         <div style="position: relative; height: 250px; width: 100%;">
                             <canvas id="pieChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-box glow-card" style="display: flex; flex-direction: column;">
+                        <h3>System Event Log</h3>
+                        <div id="event-stream"
+                            style="flex: 1; overflow-y: auto; background: #010a15; border: 1px solid rgba(0,255,255,0.2); border-radius: 4px; padding: 10px; font-family: 'Roboto Mono', monospace; font-size: 0.8rem; height: 250px; display: flex; flex-direction: column; gap: 5px;">
+                            <!-- Event logs will be appended here via JS -->
+                            <div style="color:var(--text-muted);">[SYSTEM] Event log isolated. Awaiting stream...</div>
                         </div>
                     </div>
                 </div>
@@ -234,6 +314,20 @@
                             <div class="obj-item empty">No objects currently detected</div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- History Section -->
+        <section id="history" class="page-section">
+            <h2 class="section-title glow-text">Detection History</h2>
+            <div class="history-controls mb-4" style="display: flex; justify-content: flex-end;">
+                <button id="refresh-history" class="btn btn-outline">Refresh Gallery</button>
+            </div>
+            <div id="history-grid" class="history-grid"
+                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;">
+                <div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 3rem;">
+                    AWAITING UPLINK... SIGN IN TO VIEW HISTORY
                 </div>
             </div>
         </section>
@@ -291,6 +385,31 @@
             </div>
         </section>
     </main>
+
+    <!-- Clerk Authentication Initialization -->
+    <script>
+        window.addEventListener('load', async function () {
+            if (!window.Clerk) {
+                console.error("Clerk could not be loaded.");
+                return;
+            }
+
+            await Clerk.load();
+
+            const authContainer = document.getElementById('clerk-auth-container');
+
+            if (Clerk.user) {
+                // User is signed in, mount user profile button
+                Clerk.mountUserButton(authContainer);
+            } else {
+                // User is NOT signed in, provide a typical login button
+                authContainer.innerHTML = '<button id="clerk-sign-in-btn" class="btn btn-primary btn-glow" style="padding: 0.3rem 1rem;">Sign In</button>';
+                document.getElementById('clerk-sign-in-btn').addEventListener('click', () => {
+                    Clerk.openSignIn();
+                });
+            }
+        });
+    </script>
 
     <script type="module" src="{{ url_for('static', filename='main.js') }}"></script>
 </body>

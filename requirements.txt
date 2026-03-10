@@ -4,3 +4,8 @@ ultralytics
 gunicorn
 numpy
 werkzeug
+PyJWT
+requests
+python-dotenv
+supabase
+pillow-heif
