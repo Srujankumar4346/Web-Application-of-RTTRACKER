@@ -604,36 +604,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Save state for next animation frame
         lastData = { confidence, total, fps, accuracy, motion };
-
-        // Keep homepage counters in sync with live analytics
-        updateHeroCounters(total, fps, accuracy);
-    }
-
-    // --- Hero Counter Animations ---
-    let heroFrameCount = 0;
-    function animateCounter(el, target) {
-        if (!el) return;
-        const current = parseInt(el.textContent) || 0;
-        const step = Math.ceil(Math.abs(target - current) / 8);
-        if (current < target) {
-            el.textContent = Math.min(current + step, target);
-        } else if (current > target) {
-            el.textContent = Math.max(current - step, target);
-        }
-    }
-    function updateHeroCounters(objects, fps, accuracy) {
-        heroFrameCount += Math.max(1, Math.round(fps));
-        const cntObjects = document.getElementById('cnt-objects');
-        const cntFrames = document.getElementById('cnt-frames');
-        const cntRate = document.getElementById('cnt-rate');
-        if (cntObjects) animateCounter(cntObjects, objects);
-        if (cntFrames) cntFrames.textContent = heroFrameCount.toLocaleString();
-        if (cntRate) {
-            const rateEl = cntRate.querySelector('span') ? cntRate : cntRate;
-            const numPart = Math.round(accuracy);
-            const inner = cntRate.innerHTML;
-            cntRate.innerHTML = `${numPart}<span style="font-size:1.2rem">%</span>`;
-        }
     }
 
     // --- Admin Config Logic ---
@@ -781,49 +751,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     initParticles();
 
-    // --- Advanced UI: Hacker Terminal ---
-    function initTerminal() {
-        const terminalOutput = document.getElementById('terminal-content');
-        if (!terminalOutput) return;
-
-        const bootSequence = [
-            `> INITIALIZING NEURAL NETWORK...`,
-            `> LOADING YOLOv8 WEIGHTS [OK]`,
-            `> ESTABLISHING CLERK AUTH... SUCCESS`,
-            `> SUPABASE UPLINK: SECURE [ENCRYPTED]`,
-            `> AWAITING SENSOR INPUT...`
-        ];
-
-        let lineIdx = 0;
-        let charIdx = 0;
-
-        function typeLine() {
-            if (lineIdx < bootSequence.length) {
-                const line = bootSequence[lineIdx];
-                if (charIdx < line.length) {
-                    terminalOutput.innerHTML += line.charAt(charIdx);
-                    charIdx++;
-                    setTimeout(typeLine, Math.random() * 30 + 10);
-                } else {
-                    terminalOutput.innerHTML += '<br>';
-                    lineIdx++;
-                    charIdx = 0;
-                    setTimeout(typeLine, 400); // pause between lines
-                }
-            } else {
-                // Done booting, add blinking cursor
-                terminalOutput.innerHTML += `<span class="blink-cursor">_</span>`;
-            }
-        }
-
-        // Start booting slightly after page load
-        setTimeout(typeLine, 1000);
-    }
-
-    // Run terminal only when home tab is active. We can just run it once.
-    if (document.querySelector('.nav-btn[data-target="home"]').classList.contains('active')) {
-        initTerminal();
-    }
 
     // --- History Gallery Logic ---
     async function loadHistory() {
