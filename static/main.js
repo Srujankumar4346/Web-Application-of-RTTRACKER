@@ -124,9 +124,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 stopWebcamBtn.style.display = 'inline-block';
                 loading.style.display = 'none';
                 placeholderText.style.display = 'none';
-                resultDisplay.style.display = 'block';
 
-                // Process frames at roughly 5 FPS to avoid crashing Cloud free tiers
+                // Show the raw webcam video immediately while we wait for the first annotated frame
+                clientWebcam.style.display = 'block';
+                resultDisplay.style.display = 'none';
+
+                // Process frames at ~5 FPS to avoid crashing Cloud free tiers
                 webcamInterval = setInterval(processWebcamFrame, 200);
             } catch (err) {
                 console.error(err);
@@ -150,8 +153,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const ctx = clientCanvas.getContext('2d');
         ctx.drawImage(clientWebcam, 0, 0, clientCanvas.width, clientCanvas.height);
 
-        // Compress heavily for cloud uploads (0.6 quality JPEG)
-        const base64Data = clientCanvas.toDataURL('image/jpeg', 0.6);
+        // Compress heavily for cloud uploads (0.5 quality JPEG at 320px)
+        const smallCanvas = document.createElement('canvas');
+        smallCanvas.width = 320;
+        smallCanvas.height = Math.round(clientCanvas.height * 320 / clientCanvas.width);
+        const sCtx = smallCanvas.getContext('2d');
+        sCtx.drawImage(clientCanvas, 0, 0, smallCanvas.width, smallCanvas.height);
+        const base64Data = smallCanvas.toDataURL('image/jpeg', 0.5);
 
         try {
             const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
@@ -172,6 +180,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const data = await response.json();
             if (data.image) {
+                // First annotated frame received — switch from raw video to annotated result
+                clientWebcam.style.display = 'none';
+                resultDisplay.style.display = 'block';
                 resultDisplay.src = `data:image/jpeg;base64,${data.image}`;
             }
         } catch (err) {
@@ -277,11 +288,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Compress an image File to a FormData-ready Blob via canvas (max 640px, 75% JPEG)
+    function compressImageFile(file) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                const MAX = 640;
+                let { width, height } = img;
+                if (width > MAX || height > MAX) {
+                    if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+                    else { width = Math.round(width * MAX / height); height = MAX; }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                canvas.toBlob(resolve, 'image/jpeg', 0.75);
+            };
+            img.onerror = () => resolve(file); // fallback: send original
+            img.src = url;
+        });
+    }
+
     async function processSingleImage(file, display) {
         showLoading();
+        display.textContent = `Compressing: ${file.name}`;
+
+        // Compress on the client before sending to avoid OOM on Render
+        const compressed = await compressImageFile(file);
+
         display.textContent = `Processing: ${file.name}`;
         const formData = new FormData();
-        formData.append('image', file);
+        formData.append('image', compressed, file.name);
+
         try {
             const token = window.Clerk && window.Clerk.session ? await window.Clerk.session.getToken() : null;
             const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -304,12 +345,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Guard against non-JSON responses (like Render's 502/504 HTML error pages)
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
                 const text = await response.text();
                 console.error("Non-JSON response (HTTP " + response.status + "):", text.substring(0, 300));
-                alert(`Server error (HTTP ${response.status}). The server may have run out of memory. Please try a smaller image or try again in a moment.`);
+                alert(`Server error (HTTP ${response.status}). Please try again in a moment.`);
                 resetDisplay();
                 return;
             }
@@ -325,7 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.image) showResult(`data:image/jpeg;base64,${data.image}`);
         } catch (err) {
             console.error(err);
-            alert("Network error: " + err.message + ". The server may be busy or starting up — wait 30 seconds and try again.");
+            alert("Network error: " + err.message + ". The server may be starting up — wait 30 seconds and try again.");
             resetDisplay();
         }
     }
@@ -344,16 +384,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const formData = new FormData();
                 formData.append('video', file);
 
+                const fileNameEl = document.getElementById('vid-file-name');
+                if (fileNameEl) fileNameEl.textContent = `Uploading ${file.name}... (may take up to 90s)`;
+
+                // AbortController gives us a clean 90-second timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 90000);
+
                 try {
-                    const token = await window.Clerk ? await window.Clerk.session.getToken() : null;
+                    const token = window.Clerk && window.Clerk.session ? await window.Clerk.session.getToken() : null;
                     const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
                     const response = await fetch('/upload_video', {
                         method: 'POST',
                         body: formData,
-                        headers: headers
+                        headers: headers,
+                        signal: controller.signal
                     });
-                    const data = await response.json();
+                    clearTimeout(timeoutId);
 
                     if (response.status === 401) {
                         alert("Please sign in to run detections!");
@@ -361,24 +409,33 @@ document.addEventListener('DOMContentLoaded', () => {
                         return;
                     }
 
-                    if (data.error) {
-                        alert(`Error on file ${file.name}: ${data.error}`);
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        alert(`Server error (HTTP ${response.status}). Video may be too large — try a shorter clip under 30 seconds.`);
+                        resetDisplay();
                         continue;
                     }
 
-                    // Set the src to the video stream returned by API
+                    const data = await response.json();
+
+                    if (data.error) {
+                        alert(`Error on ${file.name}: ${data.error}`);
+                        continue;
+                    }
+
                     showResult(data.video_url);
 
-                    // For multiple videos, we might want a way to skip or wait
-                    // For now, let's just wait if there's more than one
                     if (i < fileInput.files.length - 1) {
-                        // We wait 10 seconds per video if multiple are selected, or we could add a "skip" button
-                        // Given it's a presentation, 10s is a decent preview
                         await new Promise(resolve => setTimeout(resolve, 10000));
                     }
                 } catch (err) {
-                    console.error(err);
-                    alert(`Error uploading ${file.name}`);
+                    clearTimeout(timeoutId);
+                    if (err.name === 'AbortError') {
+                        alert(`Video processing timed out for "${file.name}". Please try a shorter clip (under 30 seconds).`);
+                    } else {
+                        alert(`Upload failed for "${file.name}": ${err.message}`);
+                    }
+                    resetDisplay();
                 }
             }
         });
