@@ -1263,7 +1263,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const date = new Date(log.created_at || log.timestamp);
                 const timeStr = isNaN(date.getTime()) ? 'Unknown Time' : date.toLocaleString();
 
-                let sourceStr = log.source_type || log.media_type || 'Unknown';
+                let sourceStr = log.media_type || log.source_type || 'Unknown';
                 let objects = 'None';
                 if (log.detected_objects && Array.isArray(log.detected_objects)) {
                     objects = log.detected_objects.join(', ');

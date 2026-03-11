@@ -332,11 +332,11 @@ def upload_image():
                 media_url = supabase.storage.from_("tracking-media").get_public_url(unique_filename)
                 supabase.table("detection_events").insert({
                     "user_id": user_id,
-                    "source_type": "image",
                     "media_type": "image",
                     "media_url": media_url,
-                    "detected_objects": list(set(detected_classes)),
-                    "objects_detected": analytics_state['objects_detected']
+                    "total_objects": len(detected_classes),
+                    "fps": analytics_state['fps'],
+                    "objects_detected": {c: detected_classes.count(c) for c in set(detected_classes)}
                 }).execute()
             except Exception as e:
                 print(f"Supabase sync err: {e}")
@@ -419,11 +419,14 @@ def log_event():
     objects = data.get('objects', [])
     
     try:
-        # Standardize for the History UI table columns
+        # Insert using the existing schema columns
+        obj_list = objects if isinstance(objects, list) else [objects]
         supabase.table("detection_events").insert({
             "user_id": user_id,
-            "source_type": source,
-            "detected_objects": objects
+            "media_type": source,
+            "total_objects": len(obj_list),
+            "fps": 0.0,
+            "objects_detected": {c: obj_list.count(c) for c in set(obj_list)}
         }).execute()
         return jsonify({'success': True})
     except Exception as e:
