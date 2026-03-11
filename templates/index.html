@@ -369,25 +369,28 @@
             </div>
         </section>
 
-        <!-- History Section -->
+        <!-- Unified Detection History Section -->
         <section id="history" class="page-section">
-            <h2 class="section-title glow-text">Detection History</h2>
-            <div class="history-controls mb-4" style="display: flex; justify-content: flex-end;">
-                <button id="refresh-history" class="btn btn-outline">Refresh Gallery</button>
+            <h2 class="section-title glow-text">Detection Intelligence Archive</h2>
+
+            <div class="history-controls mb-4"
+                style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 class="cyber-text">Visual Gallery</h3>
+                <button id="refresh-history" class="btn btn-outline btn-sm">Refresh Gallery</button>
             </div>
+
             <div id="history-grid" class="history-grid"
-                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;">
-                <div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 3rem;">
-                    AWAITING UPLINK... SIGN IN TO VIEW HISTORY
+                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 3rem;">
+                <div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 2rem;">
+                    AWAITING UPLINK...
                 </div>
             </div>
-        </section>
 
-        <!-- Detection History Section -->
-        <section id="history" class="page-section">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-                <h2 class="section-title glow-text" style="margin-bottom: 0; border: none;">Detection History Logs</h2>
-                <button id="refresh-history-btn" class="btn btn-outline btn-sm">Refresh Logs</button>
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-top: 1px solid rgba(0,255,255,0.1); padding-top: 1rem;">
+                <h3 class="cyber-text" style="margin-top: 2rem;">Detailed Detection Logs</h3>
+                <button id="refresh-history-btn" class="btn btn-outline btn-sm" style="margin-top: 2rem;">Refresh
+                    Table</button>
             </div>
 
             <div class="history-container glow-card" style="overflow-x: auto;">
@@ -401,7 +404,6 @@
                         </tr>
                     </thead>
                     <tbody id="history-tbody">
-                        <!-- History rows injected here by JS -->
                         <tr>
                             <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading
                                 history logs...</td>

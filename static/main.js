@@ -129,8 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 clientWebcam.style.display = 'block';
                 resultDisplay.style.display = 'none';
 
-                // Process frames at ~5 FPS to avoid crashing Cloud free tiers
-                webcamInterval = setInterval(processWebcamFrame, 200);
+                // Process frames rapidly, using 'isWebcamProcessing' lock to prevent queueing
+                webcamInterval = setInterval(processWebcamFrame, 50);
             } catch (err) {
                 console.error(err);
                 alert("Could not access your camera: " + err.message);
@@ -155,6 +155,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         clientCanvas.width = clientWebcam.videoWidth;
         clientCanvas.height = clientWebcam.videoHeight;
+        const ctx = clientCanvas.getContext('2d');
+        ctx.drawImage(clientWebcam, 0, 0, clientCanvas.width, clientCanvas.height);
+
         // Compress heavily for cloud uploads (0.6 quality JPEG at 640px)
         const smallCanvas = document.createElement('canvas');
         smallCanvas.width = 640;
@@ -366,11 +369,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            if (data.image) showResult(`data:image/jpeg;base64,${data.image}`);
+            if (data.image) {
+                showResult(`data:image/jpeg;base64,${data.image}`);
+                // Log to history DB after successful detection
+                if (typeof window.logDetectionEvent === 'function') {
+                    window.logDetectionEvent('image', [file.name]);
+                }
+            }
         } catch (err) {
             console.error(err);
             alert("Network error: " + err.message + ". The server may be starting up — wait 30 seconds and try again.");
             resetDisplay();
+        } finally {
+            // Ensure any temporary display text is cleared if not in result mode
+            if (resultDisplay.style.display !== 'block') {
+                resetDisplay();
+            }
         }
     }
 
@@ -440,6 +454,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         alert(`Upload failed for "${file.name}": ${err.message}`);
                     }
                     resetDisplay();
+                } finally {
+                    if (fileNameEl) fileNameEl.textContent = '';
                 }
             }
         });
@@ -687,14 +703,13 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch('/admin/config')
             .then(r => r.json())
             .then(data => {
-                if (data.error) return;
-                adminModelSelect.value = data.model_name;
+                adminModelSelect.value = data.model_name || 'yolov8n.pt';
 
-                adminConfSlider.value = data.confidence;
-                confValDisplay.textContent = Math.round(data.confidence * 100) + '%';
+                adminConfSlider.value = data.confidence || 0.25;
+                confValDisplay.textContent = Math.round((data.confidence || 0.25) * 100) + '%';
 
-                adminIouSlider.value = data.iou;
-                iouValDisplay.textContent = Math.round(data.iou * 100) + '%';
+                adminIouSlider.value = data.iou || 0.45;
+                iouValDisplay.textContent = Math.round((data.iou || 0.45) * 100) + '%';
             });
     }
 
@@ -814,67 +829,100 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- History Gallery Logic ---
-    async function loadHistory() {
+    // --- History Loading (Unified) ---
+    async function fetchHistory() {
         const grid = document.getElementById('history-grid');
-        if (!grid) return;
+        const tbody = document.getElementById('history-tbody');
+        if (!grid && !tbody) return;
+
+        if (grid) grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; padding: 3rem;">RETRIVING UPLINK DATA...</div>';
+        if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading history logs...</td></tr>`;
 
         try {
-            const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
-            if (!token) {
-                grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 3rem;">AUTHENTICATION REQUIRED. PLEASE SIGN IN TO ACCESS ARCHIVES.</div>';
-                return;
+            const token = window.Clerk && window.Clerk.session ? await window.Clerk.session.getToken() : null;
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch('/history', { headers });
+            if (!res.ok) throw new Error("Failed to fetch history");
+
+            const data = await res.json();
+
+            // Populate Grid (Gallery)
+            if (grid) {
+                if (!data || data.length === 0) {
+                    grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 3rem;">NO VISUAL ARCHIVES FOUND.</div>';
+                } else {
+                    grid.innerHTML = '';
+                    data.forEach(item => {
+                        if (!item.media_url) return;
+                        const card = document.createElement('div');
+                        card.className = 'history-card';
+                        const date = new Date(item.created_at).toLocaleString();
+                        const objs = Object.entries(item.objects_detected || {})
+                            .map(([name, count]) => `${name} (${count})`)
+                            .join(', ') || 'Processing...';
+
+                        card.innerHTML = `
+                            <img src="${item.media_url}" alt="Detection" loading="lazy">
+                            <div class="card-content">
+                                <div class="card-date">${date}</div>
+                                <div class="card-objs">${objs}</div>
+                                <div class="card-type">${item.media_type.toUpperCase()}</div>
+                            </div>
+                        `;
+                        grid.appendChild(card);
+                    });
+                }
             }
 
-            grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; padding: 3rem;">RETRIVING UPLINK DATA...</div>';
+            // Populate Table (Logs)
+            if (tbody) {
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">No detection history recorded yet.</td></tr>`;
+                } else {
+                    tbody.innerHTML = '';
+                    data.forEach(log => {
+                        const tr = document.createElement('tr');
+                        const date = new Date(log.created_at || log.timestamp);
+                        const timeStr = isNaN(date.getTime()) ? 'Unknown Time' : date.toLocaleString();
+                        let sourceStr = log.media_type || 'Unknown';
+                        let objects = 'None';
+                        if (log.objects_detected && typeof log.objects_detected === 'object') {
+                            objects = Object.keys(log.objects_detected).join(', ');
+                        }
 
-            const response = await fetch('/history', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+                        let statusCol = `<span style="color: #0f0;">LOGGED</span>`;
+                        if (log.media_url) {
+                            statusCol = `<a href="${log.media_url}" target="_blank" style="color: var(--neon-cyan); text-decoration: underline;">View Result</a>`;
+                        }
 
-            if (!response.ok) throw new Error('Failed to fetch history');
-
-            const data = await response.json();
-
-            if (data.length === 0) {
-                grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 3rem;">NO PREVIOUS DETECTIONS FOUND.</div>';
-                return;
+                        tr.innerHTML = `
+                            <td style="color: var(--text-muted);">${timeStr}</td>
+                            <td style="color: var(--neon-cyan);">${sourceStr.toUpperCase()}</td>
+                            <td style="color: #fff; font-weight: bold;">[${objects.toUpperCase() || 'SEARCHING...'}]</td>
+                            <td>${statusCol}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
             }
-
-            grid.innerHTML = '';
-            data.forEach(item => {
-                const card = document.createElement('div');
-                card.className = 'history-card';
-
-                const date = new Date(item.created_at).toLocaleString();
-                const objs = Object.entries(item.objects_detected || {})
-                    .map(([name, count]) => `${name} (${count})`)
-                    .join(', ') || 'No objects';
-
-                card.innerHTML = `
-                    <img src="${item.media_url}" alt="Detection" loading="lazy">
-                    <div class="card-content">
-                        <div class="card-date">${date}</div>
-                        <div class="card-objs">${objs}</div>
-                        <div class="card-type">${item.media_type}</div>
-                    </div>
-                `;
-                grid.appendChild(card);
-            });
         } catch (err) {
             console.error(err);
-            grid.innerHTML = `<div class="cyber-text" style="grid-column: 1/-1; text-align: center; color: red; padding: 3rem;">UPLINK ERROR: ${err.message}</div>`;
+            if (grid) grid.innerHTML = `<div class="cyber-text" style="grid-column: 1/-1; text-align: center; color: red; padding: 3rem;">UPLINK ERROR: ${err.message}</div>`;
+            if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red; padding: 2rem;">Error loading history logs.</td></tr>`;
         }
     }
 
     // Initialize History Refresh
     const refreshBtn = document.getElementById('refresh-history');
-    if (refreshBtn) refreshBtn.addEventListener('click', loadHistory);
+    if (refreshBtn) refreshBtn.addEventListener('click', fetchHistory);
 
     // Load history when the history tab is clicked
     document.querySelectorAll('.nav-btn[data-target="history"]').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
-            loadHistory();
+            fetchHistory();
         });
     });
 
@@ -1036,8 +1084,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             logIncident(`[${monitors[feedId].name}] Live uplink established.`, 'system');
 
-            // Start ML processing loop (~2 FPS per monitor to save CPU/Network)
-            monitors[feedId].interval = setInterval(() => processMonitorFrame(feedId), 500);
+            // Start ML processing loop (fast polling, constrained by mon.processing lock)
+            monitors[feedId].interval = setInterval(() => processMonitorFrame(feedId), 100);
 
         } catch (err) {
             console.error(err);
@@ -1074,7 +1122,7 @@ document.addEventListener('DOMContentLoaded', () => {
         logIncident(`[${monitors[feedId].name}] Processing local video archive.`, 'system');
 
         // Start ML processing loop
-        monitors[feedId].interval = setInterval(() => processMonitorFrame(feedId), 500);
+        monitors[feedId].interval = setInterval(() => processMonitorFrame(feedId), 100);
     }
 
     async function processMonitorFrame(feedId) {
@@ -1103,7 +1151,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const base64Data = smallCanvas.toDataURL('image/jpeg', 0.8);
 
         try {
-            const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
+            const token = window.Clerk && window.Clerk.session ? await window.Clerk.session.getToken() : null;
             const headers = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -1210,16 +1258,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
-            if (!token) return;
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            // Optional: You can filter so it ONLY logs if it's one of the "Active Alerts"
-            // For now, let's log any meaningful detection to the DB
             await fetch('/log_event', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: headers,
                 body: JSON.stringify({
                     source: sourceName,
                     objects: detectedObjects
@@ -1231,77 +1275,22 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const historyBtn = document.querySelector('.nav-btn[data-target="history"]');
-    const refreshHistoryBtn = document.getElementById('refresh-history-btn');
-    const historyTbody = document.getElementById('history-tbody');
-
-    async function fetchHistory() {
-        if (!historyTbody) return;
-        historyTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading history logs...</td></tr>`;
-
-        try {
-            const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
-            if (!token) {
-                historyTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red; padding: 2rem;">Please log in to view History.</td></tr>`;
-                return;
-            }
-
-            const res = await fetch('/history', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!res.ok) throw new Error("Failed to fetch history");
-
-            const data = await res.json();
-            if (!data || data.length === 0) {
-                historyTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">No detection history recorded yet.</td></tr>`;
-                return;
-            }
-
-            historyTbody.innerHTML = '';
-            data.forEach(log => {
-                const tr = document.createElement('tr');
-
-                const date = new Date(log.created_at || log.timestamp);
-                const timeStr = isNaN(date.getTime()) ? 'Unknown Time' : date.toLocaleString();
-
-                let sourceStr = log.media_type || log.source_type || 'Unknown';
-                let objects = 'None';
-                if (log.detected_objects && Array.isArray(log.detected_objects)) {
-                    objects = log.detected_objects.join(', ');
-                } else if (log.objects_detected && typeof log.objects_detected === 'object') {
-                    objects = Object.keys(log.objects_detected).join(', ');
-                }
-
-                let statusCol = `<span style="color: #0f0;">LOGGED</span>`;
-                if (log.media_url) {
-                    if (log.media_type === 'image') {
-                        statusCol = `<a href="${log.media_url}" target="_blank" style="color: var(--neon-cyan); text-decoration: underline;"><img src="${log.media_url}" style="max-height: 40px; vertical-align: middle; margin-right: 10px; border-radius: 4px;">View Result</a>`;
-                    } else {
-                        statusCol = `<a href="${log.media_url}" target="_blank" style="color: var(--neon-cyan); text-decoration: underline;">View Source</a>`;
-                    }
-                }
-
-                tr.innerHTML = `
-                    <td style="color: var(--text-muted);">${timeStr}</td>
-                    <td style="color: var(--neon-cyan);">${sourceStr.toUpperCase()}</td>
-                    <td style="color: #fff; font-weight: bold;">[${objects.toUpperCase()}]</td>
-                    <td>${statusCol}</td>
-                `;
-                historyTbody.appendChild(tr);
-            });
-
-        } catch (e) {
-            console.error("History fetch error:", e);
-            historyTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red; padding: 2rem;">Error loading history logs.</td></tr>`;
-        }
-    }
-
     if (historyBtn) {
         historyBtn.addEventListener('click', () => {
-            fetchHistory(); // Fetch fresh data when tab is clicked
+            fetchHistory();
         });
     }
 
-    if (refreshHistoryBtn) {
-        refreshHistoryBtn.addEventListener('click', fetchHistory);
+    const refreshHistoryGridBtn = document.getElementById('refresh-history');
+    if (refreshHistoryGridBtn) {
+        refreshHistoryGridBtn.addEventListener('click', fetchHistory);
     }
+
+    const refreshHistoryTbodyBtn = document.getElementById('refresh-history-btn');
+    if (refreshHistoryTbodyBtn) {
+        refreshHistoryTbodyBtn.addEventListener('click', fetchHistory);
+    }
+
+    // Initial load
+    fetchHistory();
 });

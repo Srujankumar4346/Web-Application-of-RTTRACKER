@@ -187,8 +187,8 @@ def generate_frames(source):
                 continue
             break
             
-        # Skip frames for video performance (process 1 out of every 5 frames) to avoid CPU lag
-        if not is_live and (frame_count % 5 != 0):
+        # Skip frames for video performance (process 1 out of every 2 frames) to avoid CPU lag
+        if not is_live and (frame_count % 2 != 0):
             continue
         
         annotated_frame, detected_classes = process_frame(frame, tracking=True)
@@ -205,7 +205,7 @@ def generate_frames(source):
         # Dynamically pace the loop to match original video FPS (1.0x speed)
         if not is_live:
             elapsed = time.time() - loop_start
-            sleep_needed = (frame_delay * 5) - elapsed
+            sleep_needed = (frame_delay * 2) - elapsed
             if sleep_needed > 0:
                 time.sleep(sleep_needed)
             
