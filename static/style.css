@@ -414,8 +414,8 @@ h3,
 }
 
 #result-display {
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     z-index: 2;
     border-radius: 4px;
@@ -1311,4 +1311,117 @@ input[type=range]::-webkit-slider-runnable-track {
     font-weight: bold;
     position: relative;
     padding: 10px 0;
+}
+
+/* Target Alert System */
+.target-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}
+
+.target-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 255, 255, 0.05);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    border-radius: 20px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.target-pill:hover {
+    background: rgba(0, 255, 255, 0.1);
+    border-color: var(--neon-cyan);
+    color: #fff;
+}
+
+.target-pill input[type="checkbox"] {
+    accent-color: var(--neon-cyan);
+    cursor: pointer;
+}
+
+.target-pill:has(input:checked) {
+    background: rgba(255, 0, 0, 0.1);
+    border-color: #ff003c;
+    color: #ff003c;
+    box-shadow: 0 0 10px rgba(255, 0, 60, 0.5);
+}
+
+.target-pill:has(input:checked) input {
+    accent-color: #ff003c;
+}
+
+/* cyber table */
+.cyber-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.9rem;
+    color: #fff;
+}
+
+.cyber-table th,
+.cyber-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+}
+
+.cyber-table th {
+    color: var(--neon-cyan);
+    font-family: var(--font-heading);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.cyber-table tbody tr:hover {
+    background: rgba(0, 255, 255, 0.05);
+}
+
+/* Toast Notifications */
+.toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 9999;
+}
+
+.toast {
+    min-width: 250px;
+    padding: 1rem 1.5rem;
+    background: rgba(10, 10, 15, 0.9);
+    border-left: 4px solid #ff003c;
+    color: #fff;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.9rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 0, 60, 0.3);
+    border-radius: 4px;
+    transform: translateX(120%);
+    animation: slideIn 0.3s forwards cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.toast.fade-out {
+    animation: slideOut 0.3s forwards ease-in;
+}
+
+@keyframes slideIn {
+    to {
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideOut {
+    to {
+        transform: translateX(120%);
+        opacity: 0;
+    }
 }

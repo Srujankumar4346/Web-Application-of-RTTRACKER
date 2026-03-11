@@ -238,6 +238,28 @@
                 <h2 class="section-title glow-text" style="margin-bottom: 0;">Surveillance Command Center</h2>
                 <button id="add-monitor-btn" class="btn btn-primary btn-glow">+ Add Monitor Feed</button>
             </div>
+
+            <!-- Alert Target Selection -->
+            <div class="target-selection glow-card" style="margin-bottom: 2rem; padding: 1.5rem;">
+                <h3 class="cyber-text"
+                    style="font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid rgba(0, 255, 255, 0.2); padding-bottom: 0.5rem;">
+                    ACTIVE ALERT TARGETS</h3>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">Select objects to trigger
+                    an automatic immediate alert.</p>
+                <div class="target-pills" id="target-alert-pills">
+                    <label class="target-pill"><input type="checkbox" value="person"> Person</label>
+                    <label class="target-pill"><input type="checkbox" value="car"> Car</label>
+                    <label class="target-pill"><input type="checkbox" value="truck"> Truck</label>
+                    <label class="target-pill"><input type="checkbox" value="bus"> Bus</label>
+                    <label class="target-pill"><input type="checkbox" value="motorcycle"> Motorcycle</label>
+                    <label class="target-pill"><input type="checkbox" value="bicycle"> Bicycle</label>
+                    <label class="target-pill"><input type="checkbox" value="knife"> Knife</label>
+                    <label class="target-pill"><input type="checkbox" value="backpack"> Backpack</label>
+                    <label class="target-pill"><input type="checkbox" value="suitcase"> Suitcase</label>
+                    <label class="target-pill"><input type="checkbox" value="cell phone"> Phone</label>
+                </div>
+            </div>
+
             <div class="surveillance-container">
                 <div class="monitor-grid" id="dynamic-monitor-grid">
                     <!-- Dynamic monitors will be appended here -->
@@ -358,6 +380,34 @@
                 <div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 3rem;">
                     AWAITING UPLINK... SIGN IN TO VIEW HISTORY
                 </div>
+            </div>
+        </section>
+
+        <!-- Detection History Section -->
+        <section id="history" class="page-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <h2 class="section-title glow-text" style="margin-bottom: 0; border: none;">Detection History Logs</h2>
+                <button id="refresh-history-btn" class="btn btn-outline btn-sm">Refresh Logs</button>
+            </div>
+
+            <div class="history-container glow-card" style="overflow-x: auto;">
+                <table class="cyber-table" id="history-table">
+                    <thead>
+                        <tr>
+                            <th>TIMESTAMP</th>
+                            <th>SOURCE</th>
+                            <th>DETECTED OBJECTS</th>
+                            <th>STATUS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody">
+                        <!-- History rows injected here by JS -->
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading
+                                history logs...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </section>
 

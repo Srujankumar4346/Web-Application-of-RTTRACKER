@@ -145,8 +145,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    let isWebcamProcessing = false;
+
     async function processWebcamFrame() {
         if (!clientWebcam || !clientCanvas || !clientWebcam.videoWidth) return;
+        if (isWebcamProcessing) return;
+
+        isWebcamProcessing = true;
 
         clientCanvas.width = clientWebcam.videoWidth;
         clientCanvas.height = clientWebcam.videoHeight;
@@ -184,6 +189,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (err) {
             console.error("Frame dropped:", err);
+        } finally {
+            isWebcamProcessing = false;
         }
     }
 
@@ -1093,7 +1100,7 @@ document.addEventListener('DOMContentLoaded', () => {
         smallCanvas.height = Math.round(canvas.height * 640 / canvas.width);
         const sCtx = smallCanvas.getContext('2d');
         sCtx.drawImage(canvas, 0, 0, smallCanvas.width, smallCanvas.height);
-        const base64Data = smallCanvas.toDataURL('image/jpeg', 0.5);
+        const base64Data = smallCanvas.toDataURL('image/jpeg', 0.8);
 
         try {
             const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
@@ -1115,8 +1122,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Log real detections from the backend
                     if (data.detections && data.detections.length > 0) {
+                        const activeAlerts = Array.from(document.querySelectorAll('#target-alert-pills input:checked')).map(cb => cb.value.toLowerCase());
+
                         data.detections.forEach(threat => {
-                            // Don't spam the exact same threat from the same camera too quickly
+                            // Don't spam the exact same threat from the same camera too quickly (3 seconds)
                             if (mon.lastThreat === threat && (Date.now() - mon.lastThreatTime < 3000)) return;
 
                             let type = 'system';
@@ -1125,6 +1134,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (['knife', 'gun', 'backpack', 'suitcase'].includes(threat)) type = 'threat';
 
                             logIncident(`CAM ${feedId}: Detected [${threat.toUpperCase()}] in sector.`, type);
+
+                            // Check against User's Active Target Alerts
+                            if (activeAlerts.includes(threat.toLowerCase())) {
+                                window.fireAlert(`${threat.toUpperCase()} observed on CAM ${feedId}`);
+                                // Write to DB History Log
+                                if (typeof window.logDetectionEvent === 'function') {
+                                    window.logDetectionEvent(`Surveillance CAM ${feedId}`, [threat]);
+                                }
+                            }
+
                             mon.lastThreat = threat;
                             mon.lastThreatTime = Date.now();
                         });
@@ -1156,5 +1175,133 @@ document.addEventListener('DOMContentLoaded', () => {
         if (surveillanceLogs.children.length > 50) {
             surveillanceLogs.removeChild(surveillanceLogs.lastChild);
         }
+    }
+
+    // --- Alert Toast System ---
+    let lastAlertSoundTime = 0;
+    const alertAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); // Simple beep
+    alertAudio.volume = 0.5;
+
+    window.fireAlert = function (message) {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        // Debounce sound
+        const now = Date.now();
+        if (now - lastAlertSoundTime > 2000) {
+            alertAudio.play().catch(e => console.log("Audio play blocked by browser."));
+            lastAlertSoundTime = now;
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.textContent = `ALERT: ${message}`;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.classList.add('fade-out');
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
+    };
+
+    // --- Detection History & Logging ---
+    window.logDetectionEvent = async function (sourceName, detectedObjects) {
+        if (!detectedObjects || detectedObjects.length === 0) return;
+
+        try {
+            const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
+            if (!token) return;
+
+            // Optional: You can filter so it ONLY logs if it's one of the "Active Alerts"
+            // For now, let's log any meaningful detection to the DB
+            await fetch('/log_event', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    source: sourceName,
+                    objects: detectedObjects
+                })
+            });
+        } catch (e) {
+            console.error("Failed to log event:", e);
+        }
+    };
+
+    const historyBtn = document.querySelector('.nav-btn[data-target="history"]');
+    const refreshHistoryBtn = document.getElementById('refresh-history-btn');
+    const historyTbody = document.getElementById('history-tbody');
+
+    async function fetchHistory() {
+        if (!historyTbody) return;
+        historyTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading history logs...</td></tr>`;
+
+        try {
+            const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
+            if (!token) {
+                historyTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red; padding: 2rem;">Please log in to view History.</td></tr>`;
+                return;
+            }
+
+            const res = await fetch('/history', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error("Failed to fetch history");
+
+            const data = await res.json();
+            if (!data || data.length === 0) {
+                historyTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">No detection history recorded yet.</td></tr>`;
+                return;
+            }
+
+            historyTbody.innerHTML = '';
+            data.forEach(log => {
+                const tr = document.createElement('tr');
+
+                const date = new Date(log.created_at || log.timestamp);
+                const timeStr = isNaN(date.getTime()) ? 'Unknown Time' : date.toLocaleString();
+
+                let sourceStr = log.source_type || log.media_type || 'Unknown';
+                let objects = 'None';
+                if (log.detected_objects && Array.isArray(log.detected_objects)) {
+                    objects = log.detected_objects.join(', ');
+                } else if (log.objects_detected && typeof log.objects_detected === 'object') {
+                    objects = Object.keys(log.objects_detected).join(', ');
+                }
+
+                let statusCol = `<span style="color: #0f0;">LOGGED</span>`;
+                if (log.media_url) {
+                    if (log.media_type === 'image') {
+                        statusCol = `<a href="${log.media_url}" target="_blank" style="color: var(--neon-cyan); text-decoration: underline;"><img src="${log.media_url}" style="max-height: 40px; vertical-align: middle; margin-right: 10px; border-radius: 4px;">View Result</a>`;
+                    } else {
+                        statusCol = `<a href="${log.media_url}" target="_blank" style="color: var(--neon-cyan); text-decoration: underline;">View Source</a>`;
+                    }
+                }
+
+                tr.innerHTML = `
+                    <td style="color: var(--text-muted);">${timeStr}</td>
+                    <td style="color: var(--neon-cyan);">${sourceStr.toUpperCase()}</td>
+                    <td style="color: #fff; font-weight: bold;">[${objects.toUpperCase()}]</td>
+                    <td>${statusCol}</td>
+                `;
+                historyTbody.appendChild(tr);
+            });
+
+        } catch (e) {
+            console.error("History fetch error:", e);
+            historyTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red; padding: 2rem;">Error loading history logs.</td></tr>`;
+        }
+    }
+
+    if (historyBtn) {
+        historyBtn.addEventListener('click', () => {
+            fetchHistory(); // Fetch fresh data when tab is clicked
+        });
+    }
+
+    if (refreshHistoryBtn) {
+        refreshHistoryBtn.addEventListener('click', fetchHistory);
     }
 });
