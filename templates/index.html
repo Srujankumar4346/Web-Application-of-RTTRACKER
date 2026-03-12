@@ -29,7 +29,7 @@
                 title="Go Home">RTTracker</span>
         </div>
         <ul class="nav-links">
-            <li><a href="#" class="nav-btn" data-target="simulation">Simulation</a></li>
+            <li><a href="#" class="nav-btn active" data-target="simulation">Simulation</a></li>
             <li><a href="#" class="nav-btn" data-target="analytics">Analytics</a></li>
             <li><a href="#" class="nav-btn" data-target="surveillance">Surveillance</a></li>
             <li><a href="#" class="nav-btn" data-target="history">History</a></li>
@@ -374,9 +374,28 @@
             <h2 class="section-title glow-text">Detection Intelligence Archive</h2>
 
             <div class="history-controls mb-4"
-                style="display: flex; justify-content: space-between; align-items: center;">
+                style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
                 <h3 class="cyber-text">Visual Gallery</h3>
-                <button id="refresh-history" class="btn btn-outline btn-sm">Refresh Gallery</button>
+                
+                <!-- History Search Bar -->
+                <div class="search-container" style="flex: 1; min-width: 250px; position: relative;">
+                    <input type="text" id="history-search-input" class="file-input" placeholder="Search objects, date, or source..." 
+                           style="width: 100%; border: 1px solid var(--neon-cyan); background: rgba(0,255,255,0.05); color: #fff; padding: 0.5rem 1rem;">
+                </div>
+
+                <!-- Source Filters -->
+                <div class="source-filters" id="history-source-filters" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button class="btn btn-primary btn-sm filter-btn active" data-filter="all">All Logs</button>
+                    <button class="btn btn-outline btn-sm filter-btn" data-filter="webcam">Webcam</button>
+                    <button class="btn btn-outline btn-sm filter-btn" data-filter="surveillance">Surveillance</button>
+                    <button class="btn btn-outline btn-sm filter-btn" data-filter="media">Uploads</button>
+                </div>
+                
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button id="refresh-history" class="btn btn-outline btn-sm">Refresh Data</button>
+                    <button id="delete-selected-history" class="btn btn-danger btn-sm" style="display: none; background: rgba(255, 0, 0, 0.2); border-color: #ff4444; color: #ff4444;">Delete Selected (<span id="selected-count">0</span>)</button>
+                    <button id="clear-all-history" class="btn btn-danger btn-sm" style="border-color: #ff4444; color: #ff4444;">Clear All</button>
+                </div>
             </div>
 
             <div id="history-grid" class="history-grid"
@@ -397,6 +416,7 @@
                 <table class="cyber-table" id="history-table">
                     <thead>
                         <tr>
+                            <th style="width: 40px; text-align: center;"><input type="checkbox" id="select-all-history" style="cursor: pointer;"></th>
                             <th>TIMESTAMP</th>
                             <th>SOURCE</th>
                             <th>DETECTED OBJECTS</th>
@@ -405,7 +425,7 @@
                     </thead>
                     <tbody id="history-tbody">
                         <tr>
-                            <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading
+                            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading
                                 history logs...</td>
                         </tr>
                     </tbody>

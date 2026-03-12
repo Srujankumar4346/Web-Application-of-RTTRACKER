@@ -73,8 +73,8 @@ def get_auth_user():
 
 # Fetch default config, but we no longer override on boot for all users
 default_config = {
-    'model_name': 'yolov8n.pt', 
-    'confidence': 0.25,
+    'model_name': 'yolov8s.pt', 
+    'confidence': 0.45,
     'iou': 0.45 
 }
 
@@ -115,7 +115,7 @@ def process_frame(frame, tracking=True):
     iou_thresh = app_config['iou']
         
     with model_lock:
-        results = model.predict(frame, conf=conf_thresh, iou=iou_thresh, verbose=False)
+        results = model.predict(frame, conf=conf_thresh, iou=iou_thresh, verbose=False, agnostic_nms=True)
         
     res = results[0]
     annotated_frame = res.plot()
@@ -324,12 +324,12 @@ def upload_image():
             try:
                 # Upload the processed annotated image
                 unique_filename = f"{user_id}/{uuid.uuid4()}_{file.filename}"
-                supabase.storage.from_("tracking-media").upload(
+                supabase.storage().from_("tracking-media").upload(
                     unique_filename,
                     buffer.tobytes(),
                     file_options={"content-type": "image/jpeg"}
                 )
-                media_url = supabase.storage.from_("tracking-media").get_public_url(unique_filename)
+                media_url = supabase.storage().from_("tracking-media").get_public_url(unique_filename)
                 supabase.table("detection_events").insert({
                     "user_id": user_id,
                     "media_type": "image",
@@ -371,12 +371,12 @@ def upload_video():
                 # Upload the raw uploaded video file
                 unique_filename = f"{user_id}/{uuid.uuid4()}_{file.filename}"
                 # Pass the filepath string directly to 'upload' instead of a file object
-                supabase.storage.from_("tracking-media").upload(
+                supabase.storage().from_("tracking-media").upload(
                     unique_filename,
                     filepath,
                     file_options={"content-type": "video/mp4"}
                 )
-                media_url = supabase.storage.from_("tracking-media").get_public_url(unique_filename)
+                media_url = supabase.storage().from_("tracking-media").get_public_url(unique_filename)
                 
                 # Save generic analytics state associated with starting the video
                 data = {
@@ -417,17 +417,37 @@ def log_event():
     data = request.json
     source = data.get('source', 'Unknown')
     objects = data.get('objects', [])
+    image_b64 = data.get('image', None)
     
+    media_url = None
+    if image_b64:
+        try:
+            import uuid, base64
+            img_data = base64.b64decode(image_b64.split(',')[1] if ',' in image_b64 else image_b64)
+            unique_filename = f"{user_id}/{uuid.uuid4()}_event.jpg"
+            supabase.storage().from_("tracking-media").upload(
+                unique_filename,
+                img_data,
+                file_options={"content-type": "image/jpeg"}
+            )
+            media_url = supabase.storage().from_("tracking-media").get_public_url(unique_filename)
+        except Exception as e:
+            print(f"Failed to upload log event image: {e}")
+            
     try:
         # Insert using the existing schema columns
         obj_list = objects if isinstance(objects, list) else [objects]
-        supabase.table("detection_events").insert({
+        insert_data = {
             "user_id": user_id,
             "media_type": source,
             "total_objects": len(obj_list),
             "fps": 0.0,
             "objects_detected": {c: obj_list.count(c) for c in set(obj_list)}
-        }).execute()
+        }
+        if media_url:
+            insert_data["media_url"] = media_url
+            
+        supabase.table("detection_events").insert(insert_data).execute()
         return jsonify({'success': True})
     except Exception as e:
         print(f"Log event err: {e}")
@@ -451,6 +471,63 @@ def get_history():
         return jsonify(response.data)
     except Exception as e:
         print(f"History fetch err: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/history/<event_id>', methods=['DELETE'])
+def delete_history_event(event_id):
+    user_id = get_auth_user()
+    if not user_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    if not supabase:
+        return jsonify({'error': 'Supabase not configured'}), 500
+        
+    try:
+        # Delete record from Supabase table
+        supabase.table("detection_events").delete().eq("id", event_id).eq("user_id", user_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Delete event err: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/history/all', methods=['DELETE'])
+def delete_all_history():
+    user_id = get_auth_user()
+    if not user_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    if not supabase:
+        return jsonify({'error': 'Supabase not configured'}), 500
+        
+    try:
+        # Delete ALL records for this user from Supabase table
+        supabase.table("detection_events").delete().eq("user_id", user_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Delete all history err: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/history/bulk', methods=['DELETE'])
+def delete_bulk_history():
+    user_id = get_auth_user()
+    if not user_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    if not supabase:
+        return jsonify({'error': 'Supabase not configured'}), 500
+
+    data = request.json
+    event_ids = data.get('event_ids', [])
+    
+    if not event_ids:
+        return jsonify({'error': 'No event IDs provided'}), 400
+        
+    try:
+        # Delete multiple records
+        supabase.table("detection_events").delete().in_("id", event_ids).eq("user_id", user_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Bulk delete history err: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":

@@ -189,6 +189,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 clientWebcam.style.display = 'none';
                 resultDisplay.style.display = 'block';
                 resultDisplay.src = `data:image/jpeg;base64,${data.image}`;
+
+                // Log detections from Webcam to the History DB
+                if (data.detections && data.detections.length > 0) {
+                    if (!window.webcamLogCooldowns) window.webcamLogCooldowns = {};
+                    const now = Date.now();
+                    
+                    data.detections.forEach(threat => {
+                        // Max 1 log every 10 seconds per unique object class to prevent database spam
+                        if (!window.webcamLogCooldowns[threat] || now - window.webcamLogCooldowns[threat] > 10000) {
+                            if (typeof window.logDetectionEvent === 'function') {
+                                window.logDetectionEvent('webcam', [threat], data.image);
+                            }
+                            window.webcamLogCooldowns[threat] = now;
+                        }
+                    });
+                }
             }
         } catch (err) {
             console.error("Frame dropped:", err);
@@ -371,10 +387,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.image) {
                 showResult(`data:image/jpeg;base64,${data.image}`);
-                // Log to history DB after successful detection
-                if (typeof window.logDetectionEvent === 'function') {
-                    window.logDetectionEvent('image', [file.name]);
-                }
+                // Logging is now handled securely on the backend in app.py directly.
             }
         } catch (err) {
             console.error(err);
@@ -703,10 +716,10 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch('/admin/config')
             .then(r => r.json())
             .then(data => {
-                adminModelSelect.value = data.model_name || 'yolov8n.pt';
+                adminModelSelect.value = data.model_name || 'yolov8s.pt';
 
-                adminConfSlider.value = data.confidence || 0.25;
-                confValDisplay.textContent = Math.round((data.confidence || 0.25) * 100) + '%';
+                adminConfSlider.value = data.confidence || 0.45;
+                confValDisplay.textContent = Math.round((data.confidence || 0.45) * 100) + '%';
 
                 adminIouSlider.value = data.iou || 0.45;
                 iouValDisplay.textContent = Math.round((data.iou || 0.45) * 100) + '%';
@@ -829,14 +842,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- History Gallery Logic ---
-    // --- History Loading (Unified) ---
+    // --- History Loading & Filtering ---
+    let globalHistoryData = [];
+    let currentFilterSource = 'all';
+    let selectedHistoryIds = new Set();
+
     async function fetchHistory() {
         const grid = document.getElementById('history-grid');
         const tbody = document.getElementById('history-tbody');
         if (!grid && !tbody) return;
 
         if (grid) grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; padding: 3rem;">RETRIVING UPLINK DATA...</div>';
-        if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading history logs...</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading history logs...</td></tr>`;
 
         try {
             const token = window.Clerk && window.Clerk.session ? await window.Clerk.session.getToken() : null;
@@ -846,77 +863,387 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/history', { headers });
             if (!res.ok) throw new Error("Failed to fetch history");
 
-            const data = await res.json();
-
-            // Populate Grid (Gallery)
-            if (grid) {
-                if (!data || data.length === 0) {
-                    grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 3rem;">NO VISUAL ARCHIVES FOUND.</div>';
-                } else {
-                    grid.innerHTML = '';
-                    data.forEach(item => {
-                        if (!item.media_url) return;
-                        const card = document.createElement('div');
-                        card.className = 'history-card';
-                        const date = new Date(item.created_at).toLocaleString();
-                        const objs = Object.entries(item.objects_detected || {})
-                            .map(([name, count]) => `${name} (${count})`)
-                            .join(', ') || 'Processing...';
-
-                        card.innerHTML = `
-                            <img src="${item.media_url}" alt="Detection" loading="lazy">
-                            <div class="card-content">
-                                <div class="card-date">${date}</div>
-                                <div class="card-objs">${objs}</div>
-                                <div class="card-type">${item.media_type.toUpperCase()}</div>
-                            </div>
-                        `;
-                        grid.appendChild(card);
-                    });
-                }
-            }
-
-            // Populate Table (Logs)
-            if (tbody) {
-                if (!data || data.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">No detection history recorded yet.</td></tr>`;
-                } else {
-                    tbody.innerHTML = '';
-                    data.forEach(log => {
-                        const tr = document.createElement('tr');
-                        const date = new Date(log.created_at || log.timestamp);
-                        const timeStr = isNaN(date.getTime()) ? 'Unknown Time' : date.toLocaleString();
-                        let sourceStr = log.media_type || 'Unknown';
-                        let objects = 'None';
-                        if (log.objects_detected && typeof log.objects_detected === 'object') {
-                            objects = Object.keys(log.objects_detected).join(', ');
-                        }
-
-                        let statusCol = `<span style="color: #0f0;">LOGGED</span>`;
-                        if (log.media_url) {
-                            statusCol = `<a href="${log.media_url}" target="_blank" style="color: var(--neon-cyan); text-decoration: underline;">View Result</a>`;
-                        }
-
-                        tr.innerHTML = `
-                            <td style="color: var(--text-muted);">${timeStr}</td>
-                            <td style="color: var(--neon-cyan);">${sourceStr.toUpperCase()}</td>
-                            <td style="color: #fff; font-weight: bold;">[${objects.toUpperCase() || 'SEARCHING...'}]</td>
-                            <td>${statusCol}</td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                }
-            }
+            globalHistoryData = await res.json();
+            renderHistory(globalHistoryData);
         } catch (err) {
             console.error(err);
             if (grid) grid.innerHTML = `<div class="cyber-text" style="grid-column: 1/-1; text-align: center; color: red; padding: 3rem;">UPLINK ERROR: ${err.message}</div>`;
-            if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red; padding: 2rem;">Error loading history logs.</td></tr>`;
+            if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: red; padding: 2rem;">Error loading history logs.</td></tr>`;
         }
+    }
+
+    function renderHistory(data) {
+        const grid = document.getElementById('history-grid');
+        const tbody = document.getElementById('history-tbody');
+
+        // Populate Grid (Gallery)
+        if (grid) {
+            if (!data || data.length === 0) {
+                grid.innerHTML = '<div class="cyber-text" style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 3rem;">NO VISUAL ARCHIVES FOUND.</div>';
+            } else {
+                grid.innerHTML = '';
+                data.forEach(item => {
+                    if (!item.media_url) return;
+                    const card = document.createElement('div');
+                    card.className = 'history-card';
+                    card.style.position = 'relative'; // for absolute checkbox
+                    const date = new Date(item.created_at || item.timestamp).toLocaleString();
+                    const objs = Object.entries(item.objects_detected || {})
+                        .map(([name, count]) => `${name} (${count})`)
+                        .join(', ') || 'Processing...';
+
+                    const isChecked = selectedHistoryIds.has(item.id.toString()) ? 'checked' : '';
+
+                    card.innerHTML = `
+                        <input type="checkbox" class="history-select-checkbox" data-id="${item.id}" ${isChecked} style="position: absolute; top: 10px; right: 10px; z-index: 10; cursor: pointer; transform: scale(1.5);">
+                        <img src="${item.media_url}" alt="Detection" loading="lazy">
+                        <div class="card-content">
+                            <div class="card-date">${date}</div>
+                            <div class="card-objs">${objs}</div>
+                            <div class="card-type">${(item.media_type || 'Unknown').toUpperCase()}</div>
+                        </div>
+                    `;
+                    
+                    // Click card to toggle checkbox
+                    card.addEventListener('click', (e) => {
+                        if(e.target.tagName.toLowerCase() !== 'input') {
+                            const cb = card.querySelector('.history-select-checkbox');
+                            if(cb) {
+                                cb.checked = !cb.checked;
+                                toggleSelection(item.id.toString(), cb.checked);
+                            }
+                        }
+                    });
+                    
+                    grid.appendChild(card);
+                });
+            }
+        }
+
+        // Populate Table (Logs)
+        if (tbody) {
+            if (!data || data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">No detection history recorded yet.</td></tr>`;
+            } else {
+                tbody.innerHTML = '';
+                data.forEach(log => {
+                    const tr = document.createElement('tr');
+                    const date = new Date(log.created_at || log.timestamp);
+                    const timeStr = isNaN(date.getTime()) ? 'Unknown Time' : date.toLocaleString();
+                    let sourceStr = log.media_type || 'Unknown';
+                    let objects = 'None';
+                    if (log.objects_detected && typeof log.objects_detected === 'object') {
+                        objects = Object.keys(log.objects_detected).join(', ');
+                    }
+
+                    let statusCol = `<span style="color: #0f0;">LOGGED</span>`;
+                    if (log.media_url) {
+                        statusCol = `<a href="${log.media_url}" target="_blank" style="color: var(--neon-cyan); text-decoration: underline;">View Result</a>`;
+                    }
+
+                    const isChecked = selectedHistoryIds.has(log.id.toString()) ? 'checked' : '';
+
+                    tr.innerHTML = `
+                        <td style="text-align: center;"><input type="checkbox" class="history-select-checkbox" data-id="${log.id}" ${isChecked} style="cursor: pointer;"></td>
+                        <td style="color: var(--text-muted);">${timeStr}</td>
+                        <td style="color: var(--neon-cyan);">${sourceStr.toUpperCase()}</td>
+                        <td style="color: #fff; font-weight: bold;">[${objects.toUpperCase() || 'SEARCHING...'}]</td>
+                        <td>${statusCol}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+        
+        attachCheckboxListeners();
+        updateBulkDeleteUI();
+    }
+
+    function toggleSelection(idStr, isChecked) {
+        if (isChecked) {
+            selectedHistoryIds.add(idStr);
+        } else {
+            selectedHistoryIds.delete(idStr);
+        }
+        updateBulkDeleteUI();
+    }
+
+    function attachCheckboxListeners() {
+        document.querySelectorAll('.history-select-checkbox').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                const id = e.target.getAttribute('data-id');
+                toggleSelection(id, e.target.checked);
+            });
+        });
+    }
+
+    function updateBulkDeleteUI() {
+        const count = selectedHistoryIds.size;
+        const deleteSelectedBtn = document.getElementById('delete-selected-history');
+        const countSpan = document.getElementById('selected-count');
+        const selectAllCb = document.getElementById('select-all-history');
+        
+        if (deleteSelectedBtn && countSpan) {
+            if (count > 0) {
+                deleteSelectedBtn.style.display = 'inline-block';
+                countSpan.textContent = count;
+            } else {
+                deleteSelectedBtn.style.display = 'none';
+            }
+        }
+        
+        if (selectAllCb) {
+            const visibleCheckboxes = document.querySelectorAll('.history-select-checkbox');
+            if (visibleCheckboxes.length > 0) {
+                const allChecked = Array.from(visibleCheckboxes).every(cb => cb.checked);
+                selectAllCb.checked = allChecked;
+            } else {
+                selectAllCb.checked = false;
+            }
+        }
+    }
+
+    // Handle 'Select All' in table header
+    const selectAllCb = document.getElementById('select-all-history');
+    if (selectAllCb) {
+        selectAllCb.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            document.querySelectorAll('.history-select-checkbox').forEach(cb => {
+                cb.checked = isChecked;
+                toggleSelection(cb.getAttribute('data-id'), isChecked);
+            });
+        });
+    }
+
+    let pendingDeleteId = null;
+    const deleteBtn = document.getElementById('confirm-delete-btn');
+    const cancelBtn = document.getElementById('cancel-delete-btn');
+    const deleteModal = document.getElementById('delete-confirm-modal');
+
+    function showDeleteModal(eventId) {
+        pendingDeleteId = eventId;
+        if (deleteModal) deleteModal.style.display = 'flex';
+    }
+
+    function hideDeleteModal() {
+        pendingDeleteId = null;
+        if (deleteModal) deleteModal.style.display = 'none';
+    }
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', hideDeleteModal);
+    }
+
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', async () => {
+            if (pendingDeleteId) {
+                const idToDelete = pendingDeleteId;
+                hideDeleteModal();
+                await deleteHistoryRecord(idToDelete);
+            }
+        });
+    }
+
+    // Close modal if click outside
+    window.addEventListener('click', (e) => {
+        if (e.target === deleteModal) hideDeleteModal();
+    });
+
+    // Event Delegation for Delete Buttons in Gallery and Table
+    document.addEventListener('click', (e) => {
+        if (e.target && e.target.classList.contains('delete-history-btn')) {
+            const eventId = e.target.getAttribute('data-id');
+            showDeleteModal(eventId);
+        }
+    });
+
+    async function deleteHistoryRecord(eventId) {
+        // Ensure we clear selection for the deleted items
+        selectedHistoryIds.delete(eventId.toString());
+        updateBulkDeleteUI();
+        
+        try {
+            const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch(`/history/${eventId}`, {
+                method: 'DELETE',
+                headers: headers
+            });
+
+            if (res.ok) {
+                // Remove from global list and re-render without refetching from server immediately (optimistic update)
+                globalHistoryData = globalHistoryData.filter(item => item.id.toString() !== eventId.toString());
+                const searchInput = document.getElementById('history-search-input');
+                if (searchInput && searchInput.value) {
+                    filterHistory(searchInput.value);
+                } else {
+                    renderHistory(globalHistoryData);
+                }
+                if(window.fireAlert) window.fireAlert("Record deleted successfully.");
+            } else {
+                const data = await res.json();
+                if(window.fireAlert) window.fireAlert('Failed to delete: ' + (data.error || 'Server error'));
+                else console.error('Failed to delete: ' + (data.error || 'Server error'));
+            }
+        } catch (err) {
+            console.error(err);
+            if(window.fireAlert) window.fireAlert("Error deleting record. Network issue.");
+        }
+    }
+
+    function filterHistory(query) {
+        let filtered = globalHistoryData;
+        
+        // Apply Source Filter First
+        if (currentFilterSource !== 'all') {
+            filtered = filtered.filter(item => {
+                const src = (item.media_type || '').toLowerCase();
+                if (currentFilterSource === 'webcam') return src === 'webcam';
+                if (currentFilterSource === 'surveillance') return src.includes('surveillance');
+                if (currentFilterSource === 'media') return ['image', 'video'].includes(src);
+                return true;
+            });
+        }
+        
+        // Then Apply Search Query
+        if (query) {
+            const lowerQ = query.toLowerCase();
+            filtered = filtered.filter(item => {
+                const dateStr = new Date(item.created_at || item.timestamp).toLocaleString().toLowerCase();
+                const sourceStr = (item.media_type || '').toLowerCase();
+                const objsStr = Object.keys(item.objects_detected || {}).join(' ').toLowerCase();
+                return dateStr.includes(lowerQ) || sourceStr.includes(lowerQ) || objsStr.includes(lowerQ);
+            });
+        }
+        renderHistory(filtered);
+    }
+
+    const searchInput = document.getElementById('history-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            filterHistory(e.target.value);
+        });
+    }
+
+    // Attach functionality to Filter/Source Buttons
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    if (filterBtns) {
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                // Update Button Active States
+                filterBtns.forEach(b => {
+                    b.classList.remove('btn-primary');
+                    b.classList.add('btn-outline');
+                });
+                e.target.classList.remove('btn-outline');
+                e.target.classList.add('btn-primary');
+                
+                currentFilterSource = e.target.getAttribute('data-filter');
+                filterHistory(searchInput ? searchInput.value : '');
+            });
+        });
     }
 
     // Initialize History Refresh
     const refreshBtn = document.getElementById('refresh-history');
     if (refreshBtn) refreshBtn.addEventListener('click', fetchHistory);
+
+    // Initialize Clear All History
+    const clearAllBtn = document.getElementById('clear-all-history');
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', async () => {
+            if (globalHistoryData.length === 0) {
+                if (window.fireAlert) window.fireAlert("History is already empty.");
+                return;
+            }
+
+            if (confirm("WARNING: This will permanently delete ALL your detection history. This action cannot be undone. Are you sure?")) {
+                try {
+                    clearAllBtn.innerHTML = 'Clearing...';
+                    clearAllBtn.disabled = true;
+
+                    const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
+                    const headers = {};
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                    const res = await fetch('/history/all', {
+                        method: 'DELETE',
+                        headers: headers
+                    });
+
+                    if (res.ok) {
+                        globalHistoryData = [];
+                        selectedHistoryIds.clear();
+                        renderHistory([]);
+                        if (window.fireAlert) window.fireAlert("All history cleared successfully.");
+                    } else {
+                        const data = await res.json();
+                        if (window.fireAlert) window.fireAlert("Failed to clear history: " + (data.error || "Server Error"));
+                    }
+                } catch (err) {
+                    console.error(err);
+                    if (window.fireAlert) window.fireAlert("Network error while clearing history.");
+                } finally {
+                    clearAllBtn.innerHTML = 'Clear All';
+                    clearAllBtn.disabled = false;
+                }
+            }
+        });
+    }
+
+    // Initialize Bulk Delete Action
+    const deleteSelectedBtn = document.getElementById('delete-selected-history');
+    if (deleteSelectedBtn) {
+        deleteSelectedBtn.addEventListener('click', async () => {
+            const count = selectedHistoryIds.size;
+            if (count === 0) return;
+
+            if (confirm(`Are you sure you want to delete the ${count} selected record(s)?`)) {
+                try {
+                    deleteSelectedBtn.innerHTML = 'Deleting...';
+                    deleteSelectedBtn.disabled = true;
+
+                    const token = window.Clerk && Clerk.session ? await Clerk.session.getToken() : null;
+                    const headers = { 'Content-Type': 'application/json' };
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                    const idsArray = Array.from(selectedHistoryIds);
+
+                    const res = await fetch('/history/bulk', {
+                        method: 'DELETE',
+                        headers: headers,
+                        body: JSON.stringify({ event_ids: idsArray })
+                    });
+
+                    if (res.ok) {
+                        // Optimistic update
+                        globalHistoryData = globalHistoryData.filter(item => !selectedHistoryIds.has(item.id.toString()));
+                        selectedHistoryIds.clear();
+                        
+                        const searchInput = document.getElementById('history-search-input');
+                        if (searchInput && searchInput.value) {
+                            filterHistory(searchInput.value);
+                        } else {
+                            renderHistory(globalHistoryData);
+                        }
+                        
+                        if (window.fireAlert) window.fireAlert(`Successfully deleted ${count} record(s).`);
+                    } else {
+                        const data = await res.json();
+                        if (window.fireAlert) window.fireAlert("Failed to delete records: " + (data.error || "Server Error"));
+                    }
+                } catch (err) {
+                    console.error(err);
+                    if (window.fireAlert) window.fireAlert("Network error while deleting records.");
+                } finally {
+                    deleteSelectedBtn.disabled = false;
+                    updateBulkDeleteUI();
+                }
+            }
+        });
+    }
 
     // Load history when the history tab is clicked
     document.querySelectorAll('.nav-btn[data-target="history"]').forEach(btn => {
@@ -1188,7 +1515,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 window.fireAlert(`${threat.toUpperCase()} observed on CAM ${feedId}`);
                                 // Write to DB History Log
                                 if (typeof window.logDetectionEvent === 'function') {
-                                    window.logDetectionEvent(`Surveillance CAM ${feedId}`, [threat]);
+                                    window.logDetectionEvent(`Surveillance CAM ${feedId}`, [threat], data.image);
                                 }
                             }
 
@@ -1253,7 +1580,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- Detection History & Logging ---
-    window.logDetectionEvent = async function (sourceName, detectedObjects) {
+    window.logDetectionEvent = async function (sourceName, detectedObjects, imageB64 = null) {
         if (!detectedObjects || detectedObjects.length === 0) return;
 
         try {
@@ -1261,13 +1588,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const headers = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
+            const payload = {
+                source: sourceName,
+                objects: detectedObjects
+            };
+            if (imageB64) {
+                payload.image = imageB64;
+            }
+
             await fetch('/log_event', {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify({
-                    source: sourceName,
-                    objects: detectedObjects
-                })
+                body: JSON.stringify(payload)
             });
         } catch (e) {
             console.error("Failed to log event:", e);
