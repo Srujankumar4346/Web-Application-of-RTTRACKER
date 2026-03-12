@@ -313,7 +313,7 @@ def upload_image():
             except Exception as e:
                 return jsonify({'error': f'Unsupported image format: {file.filename}'}), 400
             
-        annotated_frame, detected_classes = process_frame(frame, tracking=False)
+        annotated_frame, detected_classes = process_frame(frame, tracking=True)
         
         ret, buffer = cv2.imencode('.jpg', annotated_frame)
         if not ret:
