@@ -682,13 +682,20 @@ document.addEventListener('DOMContentLoaded', () => {
             radarChartInst.update();
         }
 
-        if (barChartInst && pieChartInst) {
+        if (barChartInst && labels.length > 0) {
             barChartInst.data.labels = labels;
             barChartInst.data.datasets[0].data = counts;
             barChartInst.update('active');
+        }
 
+        if (pieChartInst && labels.length > 0) {
             pieChartInst.data.labels = labels;
             pieChartInst.data.datasets[0].data = counts;
+            pieChartInst.update('active');
+        } else if (pieChartInst) {
+            // Default empty pie chart
+            pieChartInst.data.labels = [];
+            pieChartInst.data.datasets[0].data = [];
             pieChartInst.update('active');
         }
 
