@@ -150,34 +150,34 @@
             <h2 class="section-title glow-text">AI Detection Control Panel</h2>
             <div class="simulation-container glow-card">
                 <div class="sim-sidebar">
-                    <div id="admin-panel" class="admin-panel glow-card" style="display:none; margin-bottom: 1rem;">
+                    <div id="config-panel" class="config-panel glow-card" style="margin-bottom: 1rem; padding: 1rem;">
                         <h3 class="cyber-text"
                             style="font-size: 1.1rem; border-bottom: 1px solid rgba(0,255,255,0.3); padding-bottom: 0.5rem; margin-bottom: 0.5rem;">
-                            Admin Configuration</h3>
-                        <label for="admin-model" style="display:block; margin-bottom: 0.3rem;">YOLO Model:</label>
-                        <select id="admin-model" class="file-input"
-                            style="width: 100%; margin-bottom: 0.8rem; background: #010a15; color: var(--neon-cyan); border: 1px solid var(--border-color);">
+                            ⚙️ AI Model Settings</h3>
+                        <label for="config-model" style="display:block; margin-bottom: 0.3rem;">YOLO Model:</label>
+                        <select id="config-model" class="file-input"
+                            style="width: 100%; margin-bottom: 0.8rem; background: #010a15; color: var(--neon-cyan); border: 1px solid var(--border-color); cursor: pointer;">
                             <option value="yolov8n.pt">Nano (yolov8n) - Fast</option>
                             <option value="yolov8s.pt">Small (yolov8s) - Accurate</option>
                         </select>
-                        <label for="admin-conf" style="display:block; margin-bottom: 0.3rem;">Confidence Thresh:</label>
-                        <input type="range" id="admin-conf" min="0.1" max="1.0" step="0.05" value="0.25"
-                            style="width: 100%;">
+                        <label for="config-conf" style="display:block; margin-bottom: 0.3rem;">Confidence Thresh:</label>
+                        <input type="range" id="config-conf" min="0.1" max="1.0" step="0.05" value="0.45"
+                            style="width: 100%; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 0.8rem;"><span
                                 style="font-size:0.8rem;">10%</span><span id="conf-val-display"
-                                style="font-size:0.8rem;">25%</span><span style="font-size:0.8rem;">100%</span></div>
+                                style="font-size:0.8rem;">45%</span><span style="font-size:0.8rem;">100%</span></div>
 
-                        <label for="admin-iou" style="display:block; margin-bottom: 0.3rem;">Overlap Merge
+                        <label for="config-iou" style="display:block; margin-bottom: 0.3rem;">Overlap Merge
                             (IoU):</label>
-                        <input type="range" id="admin-iou" min="0.1" max="1.0" step="0.05" value="0.45"
-                            style="width: 100%;">
+                        <input type="range" id="config-iou" min="0.1" max="1.0" step="0.05" value="0.45"
+                            style="width: 100%; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 0.8rem;"><span
                                 style="font-size:0.8rem;">Strict</span><span id="iou-val-display"
-                                style="font-size:0.8rem;">45%</span><span style="font-size:0.8rem;">Merge All</span>
+                                style="font-size:0.8rem;">45%</span><span style="font-size:0.8rem;">Merge</span>
                         </div>
 
                         <button id="save-config-btn" class="btn btn-outline"
-                            style="width: 100%; font-size: 0.9rem;">Save Config</button>
+                            style="width: 100%; font-size: 0.9rem;">Update Model</button>
                     </div>
                     <div class="sim-controls">
                         <button class="btn mode-btn active" data-mode="webcam">Webcam Detection</button>

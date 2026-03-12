@@ -696,57 +696,66 @@ document.addEventListener('DOMContentLoaded', () => {
         lastData = { confidence, total, fps, accuracy, motion };
     }
 
-    // --- Admin Config Logic ---
-    const adminConfSlider = document.getElementById('admin-conf');
+    // --- Model Config Logic ---
+    const configConfSlider = document.getElementById('config-conf');
     const confValDisplay = document.getElementById('conf-val-display');
-    const adminIouSlider = document.getElementById('admin-iou');
+    const configIouSlider = document.getElementById('config-iou');
     const iouValDisplay = document.getElementById('iou-val-display');
-    const adminModelSelect = document.getElementById('admin-model');
+    const configModelSelect = document.getElementById('config-model');
     const saveConfigBtn = document.getElementById('save-config-btn');
 
-    adminConfSlider.addEventListener('input', (e) => {
-        confValDisplay.textContent = Math.round(e.target.value * 100) + '%';
-    });
+    if (configConfSlider && confValDisplay) {
+        configConfSlider.addEventListener('input', (e) => {
+            confValDisplay.textContent = Math.round(e.target.value * 100) + '%';
+        });
+    }
 
-    adminIouSlider.addEventListener('input', (e) => {
-        iouValDisplay.textContent = Math.round(e.target.value * 100) + '%';
-    });
+    if (configIouSlider && iouValDisplay) {
+        configIouSlider.addEventListener('input', (e) => {
+            iouValDisplay.textContent = Math.round(e.target.value * 100) + '%';
+        });
+    }
 
     function fetchAdminConfig() {
         fetch('/admin/config')
             .then(r => r.json())
             .then(data => {
-                adminModelSelect.value = data.model_name || 'yolov8s.pt';
-
-                adminConfSlider.value = data.confidence || 0.45;
-                confValDisplay.textContent = Math.round((data.confidence || 0.45) * 100) + '%';
-
-                adminIouSlider.value = data.iou || 0.45;
-                iouValDisplay.textContent = Math.round((data.iou || 0.45) * 100) + '%';
-            });
+                if (configModelSelect) configModelSelect.value = data.model_name || 'yolov8s.pt';
+                if (configConfSlider) configConfSlider.value = data.confidence || 0.45;
+                if (confValDisplay) confValDisplay.textContent = Math.round((data.confidence || 0.45) * 100) + '%';
+                if (configIouSlider) configIouSlider.value = data.iou || 0.45;
+                if (iouValDisplay) iouValDisplay.textContent = Math.round((data.iou || 0.45) * 100) + '%';
+            })
+            .catch(e => console.error("Error fetching config:", e));
     }
 
-    saveConfigBtn.addEventListener('click', () => {
-        const payload = {
-            model_name: adminModelSelect.value,
-            confidence: parseFloat(adminConfSlider.value),
-            iou: parseFloat(adminIouSlider.value)
-        };
-        saveConfigBtn.textContent = "Saving...";
-        fetch('/admin/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        }).then(r => r.json()).then(data => {
-            if (data.success) {
-                saveConfigBtn.textContent = "Saved!";
-                setTimeout(() => saveConfigBtn.textContent = "Save Config", 2000);
-            }
+    if (saveConfigBtn) {
+        saveConfigBtn.addEventListener('click', () => {
+            const payload = {
+                model_name: configModelSelect.value,
+                confidence: parseFloat(configConfSlider.value),
+                iou: parseFloat(configIouSlider.value)
+            };
+            saveConfigBtn.textContent = "Updating...";
+            fetch('/admin/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(r => r.json()).then(data => {
+                if (data.success) {
+                    saveConfigBtn.textContent = "Model Updated!";
+                    if (window.fireAlert) window.fireAlert("AI Model Configuration Updated Successfully.");
+                    setTimeout(() => saveConfigBtn.textContent = "Update Model", 2000);
+                }
+            }).catch(e => {
+                console.error("Error saving config:", e);
+                saveConfigBtn.textContent = "Error";
+                setTimeout(() => saveConfigBtn.textContent = "Update Model", 2000);
+            });
         });
-    });
+    }
 
     // Start App globally
-    adminPanel.style.display = 'block';
     fetchAdminConfig();
     pollInterval = setInterval(fetchAnalytics, 2000);
     fetchAnalytics();
