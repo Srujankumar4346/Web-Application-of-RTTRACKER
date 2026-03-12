@@ -611,7 +611,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- Live Event Stream Logic ---
         const eventStream = document.getElementById('event-stream');
-        if (eventStream && total > 0) {
+        
+        // Prevent repeating the same log every 2s for static images
+        const isImageSpam = (currentMode === 'image') && lastData && lastData.objs && (JSON.stringify(objs) === JSON.stringify(lastData.objs));
+
+        if (eventStream && total > 0 && !isImageSpam) {
             const timeStr = new Date().toLocaleTimeString();
             // Create a short summary of objects detected
             const objSummary = Object.entries(objs).map(([k, v]) => `${v}x ${k}`).join(', ');
@@ -628,8 +632,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             // Auto scroll to bottom
             eventStream.scrollTop = eventStream.scrollHeight;
-        } else if (eventStream && Object.keys(objs).length === 0 && Math.random() > 0.7) {
-            // Occasional idle log
+        } else if (eventStream && Object.keys(objs).length === 0 && Math.random() > 0.7 && currentMode !== 'image') {
+            // Occasional idle log for live feeds
             const timeStr = new Date().toLocaleTimeString();
             const newLog = document.createElement('div');
             newLog.style.color = 'var(--text-muted)';
@@ -693,7 +697,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Save state for next animation frame
-        lastData = { confidence, total, fps, accuracy, motion };
+        lastData = { confidence, total, fps, accuracy, motion, objs };
     }
 
     // --- Model Config Logic ---
