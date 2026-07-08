@@ -1,0 +1,19 @@
+# Exclude large media and document files from Vercel deployments
+RTTracking demo.mp4
+iomp batch 10 final docs.pdf
+IOMP BATCH-10 Mini Project DOCUMENTATION_removed.pdf
+ilovepdf_merged.docx
+local_history.db
+yolov8s.pt
+yolov8n.pt
+
+# Exclude local directories and caches
+.git
+.agents
+.zencoder
+.zenflow
+venv
+__pycache__
+*.pyc
+uploads
+*.db
