@@ -15,6 +15,45 @@ from datetime import datetime
 
 load_dotenv()
 
+# --- Live Log Capture for Remote Debugging ---
+import collections
+from datetime import datetime
+import sys
+
+class LogCapture:
+    def __init__(self):
+        self.logs = collections.deque(maxlen=500)
+        self.stdout = sys.stdout if hasattr(sys, 'stdout') else None
+        
+    def write(self, message):
+        if self.stdout:
+            self.stdout.write(message)
+        if message.strip():
+            self.logs.append(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message.strip()}")
+            
+    def flush(self):
+        if self.stdout:
+            self.stdout.flush()
+
+class ErrCapture:
+    def __init__(self, log_capture):
+        self.log_capture = log_capture
+        self.stderr = sys.stderr if hasattr(sys, 'stderr') else None
+        
+    def write(self, message):
+        if self.stderr:
+            self.stderr.write(message)
+        if message.strip():
+            self.log_capture.logs.append(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ERR] {message.strip()}")
+            
+    def flush(self):
+        if self.stderr:
+            self.stderr.flush()
+
+log_capture = LogCapture()
+sys.stdout = log_capture
+sys.stderr = ErrCapture(log_capture)
+
 # --- SQLite Local Fallback Database Config ---
 DB_FILE = "local_history.db"
 
@@ -172,7 +211,7 @@ def get_auth_user():
 
 # Fetch default config, but we no longer override on boot for all users
 default_config = {
-    'model_name': 'yolov8s.pt', 
+    'model_name': 'yolov8n.pt', 
     'confidence': 0.45,
     'iou': 0.45 
 }
@@ -570,6 +609,21 @@ def serve_upload(filename):
 @app.route('/analytics_data')
 def get_analytics():
     return jsonify(analytics_state)
+
+@app.route('/debug_logs')
+def get_debug_logs():
+    return "<pre>" + "\n".join(log_capture.logs) + "</pre>"
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+    tb = traceback.format_exc()
+    print(f"Global handler caught exception: {tb}")
+    return jsonify({
+        "error": "Unhandled Exception",
+        "message": str(e),
+        "traceback": tb.split("\n")
+    }), 500
 
 @app.route('/log_event', methods=['POST'])
 def log_event():
