@@ -4,13 +4,109 @@ import time
 import base64
 import threading
 import uuid
-from flask import Flask, render_template, Response, request, jsonify
+from flask import Flask, render_template, Response, request, jsonify, send_from_directory
 from ultralytics import YOLO
 import jwt
 from dotenv import load_dotenv
 from supabase import create_client, Client
+import sqlite3
+import json
+from datetime import datetime
 
 load_dotenv()
+
+# --- SQLite Local Fallback Database Config ---
+DB_FILE = "local_history.db"
+
+def init_local_db():
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS detection_events (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                media_url TEXT,
+                total_objects INTEGER NOT NULL,
+                fps REAL NOT NULL,
+                objects_detected TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error initializing local database: {e}")
+
+init_local_db()
+
+def get_local_events(user_id):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, user_id, media_type, media_url, total_objects, fps, objects_detected, created_at
+            FROM detection_events
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+        """, (user_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        events = []
+        for r in rows:
+            events.append({
+                "id": r[0],
+                "user_id": r[1],
+                "media_type": r[2],
+                "media_url": r[3],
+                "total_objects": r[4],
+                "fps": r[5],
+                "objects_detected": json.loads(r[6]),
+                "created_at": r[7]
+            })
+        return events
+    except Exception as e:
+        print(f"Error getting local events: {e}")
+        return []
+
+def delete_local_event(event_id, user_id):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM detection_events WHERE id = ? AND user_id = ?", (event_id, user_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Error deleting local event: {e}")
+        return False
+
+def delete_all_local_events(user_id):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM detection_events WHERE user_id = ?", (user_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Error deleting all local events: {e}")
+        return False
+
+def delete_bulk_local_events(event_ids, user_id):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        placeholders = ",".join("?" for _ in event_ids)
+        cursor.execute(f"DELETE FROM detection_events WHERE id IN ({placeholders}) AND user_id = ?", tuple(event_ids) + (user_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Error bulk deleting local events: {e}")
+        return False
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -28,7 +124,11 @@ def add_header(response):
 # Initialize Supabase
 supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(supabase_url, supabase_key) if supabase_url and supabase_key else None
+try:
+    supabase: Client = create_client(supabase_url, supabase_key) if supabase_url and supabase_key else None
+except Exception as e:
+    print(f"Warning: Supabase client initialization failed ({e}). Running in SQLite fallback mode.")
+    supabase = None
 
 # We use the publishable key to find the JWKS endpoint
 CLERK_FRONTEND_API_URL = "https://wondrous-reindeer-57.clerk.accounts.dev"
@@ -318,10 +418,11 @@ def upload_image():
         if not ret:
             return jsonify({'error': 'Could not encode processed image'}), 500
             
-        # Save event data to Supabase
+        # Save event data (Supabase with Local SQLite fallback)
+        saved_to_supabase = False
+        media_url = None
         if supabase:
             try:
-                # Upload the processed annotated image
                 unique_filename = f"{user_id}/{uuid.uuid4()}_{file.filename}"
                 supabase.storage().from_("tracking-media").upload(
                     unique_filename,
@@ -329,6 +430,7 @@ def upload_image():
                     file_options={"content-type": "image/jpeg"}
                 )
                 media_url = supabase.storage().from_("tracking-media").get_public_url(unique_filename)
+                
                 supabase.table("detection_events").insert({
                     "user_id": user_id,
                     "media_type": "image",
@@ -337,8 +439,43 @@ def upload_image():
                     "fps": analytics_state['fps'],
                     "objects_detected": {c: detected_classes.count(c) for c in set(detected_classes)}
                 }).execute()
+                saved_to_supabase = True
             except Exception as e:
-                print(f"Supabase sync err: {e}")
+                print(f"Supabase image upload failed: {e}. Falling back to local.")
+                
+        if not saved_to_supabase:
+            try:
+                # Save locally to uploads folder
+                local_filename = f"{uuid.uuid4()}_{file.filename}"
+                local_filepath = os.path.join(app.config['UPLOAD_FOLDER'], local_filename)
+                with open(local_filepath, "wb") as f:
+                    f.write(buffer.tobytes())
+                media_url = f"/uploads/{local_filename}"
+                
+                # Save to local SQLite
+                conn = sqlite3.connect(DB_FILE)
+                cursor = conn.cursor()
+                event_id = str(uuid.uuid4())
+                created_at = datetime.utcnow().isoformat() + "Z"
+                objects_json = json.dumps({c: detected_classes.count(c) for c in set(detected_classes)})
+                
+                cursor.execute("""
+                    INSERT INTO detection_events (id, user_id, media_type, media_url, total_objects, fps, objects_detected, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    event_id,
+                    user_id,
+                    "image",
+                    media_url,
+                    len(detected_classes),
+                    analytics_state['fps'],
+                    objects_json,
+                    created_at
+                ))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"Local SQLite save failed: {e}")
 
         img_base64 = base64.b64encode(buffer).decode('utf-8')
         return jsonify({'image': img_base64})
@@ -364,12 +501,12 @@ def upload_video():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
 
-        # Save event data to Supabase
+        # Save event data (Supabase with Local SQLite fallback)
+        saved_to_supabase = False
+        media_url = None
         if supabase:
             try:
-                # Upload the raw uploaded video file
                 unique_filename = f"{user_id}/{uuid.uuid4()}_{file.filename}"
-                # Pass the filepath string directly to 'upload' instead of a file object
                 supabase.storage().from_("tracking-media").upload(
                     unique_filename,
                     filepath,
@@ -377,18 +514,44 @@ def upload_video():
                 )
                 media_url = supabase.storage().from_("tracking-media").get_public_url(unique_filename)
                 
-                # Save generic analytics state associated with starting the video
                 data = {
                     "user_id": user_id,
                     "media_type": "video",
                     "media_url": media_url,
-                    "total_objects": 0, # Objects updated live during processing via websockets/polling usually
+                    "total_objects": 0,
                     "fps": 0.0,
                     "objects_detected": {}
                 }
                 supabase.table("detection_events").insert(data).execute()
+                saved_to_supabase = True
             except Exception as e:
-                print(f"Supabase sync err: {e}")
+                print(f"Supabase video upload failed: {e}. Falling back to local.")
+                
+        if not saved_to_supabase:
+            try:
+                media_url = f"/uploads/{file.filename}"
+                conn = sqlite3.connect(DB_FILE)
+                cursor = conn.cursor()
+                event_id = str(uuid.uuid4())
+                created_at = datetime.utcnow().isoformat() + "Z"
+                
+                cursor.execute("""
+                    INSERT INTO detection_events (id, user_id, media_type, media_url, total_objects, fps, objects_detected, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    event_id,
+                    user_id,
+                    "video",
+                    media_url,
+                    0,
+                    0.0,
+                    "{}",
+                    created_at
+                ))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"Local SQLite video save failed: {e}")
 
         return jsonify({'video_url': f'/video_file/{file.filename}'})
     except Exception as e:
@@ -400,6 +563,10 @@ def upload_video():
 def video_file(filename):
     return Response(generate_frames(filename), mimetype='multipart/x-mixed-replace; boundary=frame')
     
+@app.route('/uploads/<path:filename>')
+def serve_upload(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 @app.route('/analytics_data')
 def get_analytics():
     return jsonify(analytics_state)
@@ -410,47 +577,84 @@ def log_event():
     if not user_id:
         return jsonify({'error': 'Unauthorized'}), 401
     
-    if not supabase:
-        return jsonify({'error': 'Supabase not configured'}), 500
-        
     data = request.json
     source = data.get('source', 'Unknown')
     objects = data.get('objects', [])
     image_b64 = data.get('image', None)
     
-    media_url = None
+    obj_list = objects if isinstance(objects, list) else [objects]
+    
+    img_data = None
     if image_b64:
         try:
-            import uuid, base64
             img_data = base64.b64decode(image_b64.split(',')[1] if ',' in image_b64 else image_b64)
-            unique_filename = f"{user_id}/{uuid.uuid4()}_event.jpg"
-            supabase.storage().from_("tracking-media").upload(
-                unique_filename,
-                img_data,
-                file_options={"content-type": "image/jpeg"}
-            )
-            media_url = supabase.storage().from_("tracking-media").get_public_url(unique_filename)
         except Exception as e:
-            print(f"Failed to upload log event image: {e}")
+            print(f"Failed to decode base64: {e}")
             
-    try:
-        # Insert using the existing schema columns
-        obj_list = objects if isinstance(objects, list) else [objects]
-        insert_data = {
-            "user_id": user_id,
-            "media_type": source,
-            "total_objects": len(obj_list),
-            "fps": 0.0,
-            "objects_detected": {c: obj_list.count(c) for c in set(obj_list)}
-        }
-        if media_url:
-            insert_data["media_url"] = media_url
+    media_url = None
+    saved_to_supabase = False
+    
+    if supabase:
+        try:
+            if img_data:
+                unique_filename = f"{user_id}/{uuid.uuid4()}_event.jpg"
+                supabase.storage().from_("tracking-media").upload(
+                    unique_filename,
+                    img_data,
+                    file_options={"content-type": "image/jpeg"}
+                )
+                media_url = supabase.storage().from_("tracking-media").get_public_url(unique_filename)
+                
+            insert_data = {
+                "user_id": user_id,
+                "media_type": source,
+                "total_objects": len(obj_list),
+                "fps": 0.0,
+                "objects_detected": {c: obj_list.count(c) for c in set(obj_list)}
+            }
+            if media_url:
+                insert_data["media_url"] = media_url
+                
+            supabase.table("detection_events").insert(insert_data).execute()
+            saved_to_supabase = True
+        except Exception as e:
+            print(f"Supabase log event failed: {e}. Falling back to local.")
             
-        supabase.table("detection_events").insert(insert_data).execute()
-        return jsonify({'success': True})
-    except Exception as e:
-        print(f"Log event err: {e}")
-        return jsonify({'error': str(e)}), 500
+    if not saved_to_supabase:
+        try:
+            if img_data:
+                local_filename = f"{uuid.uuid4()}_event.jpg"
+                local_filepath = os.path.join(app.config['UPLOAD_FOLDER'], local_filename)
+                with open(local_filepath, "wb") as f:
+                    f.write(img_data)
+                media_url = f"/uploads/{local_filename}"
+                
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            event_id = str(uuid.uuid4())
+            created_at = datetime.utcnow().isoformat() + "Z"
+            objects_json = json.dumps({c: obj_list.count(c) for c in set(obj_list)})
+            
+            cursor.execute("""
+                INSERT INTO detection_events (id, user_id, media_type, media_url, total_objects, fps, objects_detected, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                event_id,
+                user_id,
+                source,
+                media_url,
+                len(obj_list),
+                0.0,
+                objects_json,
+                created_at
+            ))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Local SQLite log event failed: {e}")
+            return jsonify({'error': str(e)}), 500
+            
+    return jsonify({'success': True})
 
 @app.route('/history')
 def get_history():
@@ -458,19 +662,19 @@ def get_history():
     if not user_id:
         return jsonify({'error': 'Unauthorized'}), 401
     
-    if not supabase:
-        return jsonify({'error': 'Supabase not configured'}), 500
-        
-    try:
-        response = supabase.table("detection_events") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .order("created_at", desc=True) \
-            .execute()
-        return jsonify(response.data)
-    except Exception as e:
-        print(f"History fetch err: {e}")
-        return jsonify({'error': str(e)}), 500
+    if supabase:
+        try:
+            response = supabase.table("detection_events") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .order("created_at", desc=True) \
+                .execute()
+            return jsonify(response.data)
+        except Exception as e:
+            print(f"Supabase history fetch failed: {e}. Falling back to local SQLite.")
+            
+    # Local fallback
+    return jsonify(get_local_events(user_id))
 
 @app.route('/history/<event_id>', methods=['DELETE'])
 def delete_history_event(event_id):
@@ -478,16 +682,14 @@ def delete_history_event(event_id):
     if not user_id:
         return jsonify({'error': 'Unauthorized'}), 401
     
-    if not supabase:
-        return jsonify({'error': 'Supabase not configured'}), 500
-        
-    try:
-        # Delete record from Supabase table
-        supabase.table("detection_events").delete().eq("id", event_id).eq("user_id", user_id).execute()
-        return jsonify({'success': True})
-    except Exception as e:
-        print(f"Delete event err: {e}")
-        return jsonify({'error': str(e)}), 500
+    if supabase:
+        try:
+            supabase.table("detection_events").delete().eq("id", event_id).eq("user_id", user_id).execute()
+        except Exception as e:
+            print(f"Supabase event delete failed: {e}. Removing locally.")
+            
+    delete_local_event(event_id, user_id)
+    return jsonify({'success': True})
 
 @app.route('/history/all', methods=['DELETE'])
 def delete_all_history():
@@ -495,16 +697,14 @@ def delete_all_history():
     if not user_id:
         return jsonify({'error': 'Unauthorized'}), 401
     
-    if not supabase:
-        return jsonify({'error': 'Supabase not configured'}), 500
-        
-    try:
-        # Delete ALL records for this user from Supabase table
-        supabase.table("detection_events").delete().eq("user_id", user_id).execute()
-        return jsonify({'success': True})
-    except Exception as e:
-        print(f"Delete all history err: {e}")
-        return jsonify({'error': str(e)}), 500
+    if supabase:
+        try:
+            supabase.table("detection_events").delete().eq("user_id", user_id).execute()
+        except Exception as e:
+            print(f"Supabase delete all failed: {e}. Removing locally.")
+            
+    delete_all_local_events(user_id)
+    return jsonify({'success': True})
 
 @app.route('/history/bulk', methods=['DELETE'])
 def delete_bulk_history():
@@ -512,22 +712,20 @@ def delete_bulk_history():
     if not user_id:
         return jsonify({'error': 'Unauthorized'}), 401
     
-    if not supabase:
-        return jsonify({'error': 'Supabase not configured'}), 500
-
     data = request.json
     event_ids = data.get('event_ids', [])
     
     if not event_ids:
         return jsonify({'error': 'No event IDs provided'}), 400
         
-    try:
-        # Delete multiple records
-        supabase.table("detection_events").delete().in_("id", event_ids).eq("user_id", user_id).execute()
-        return jsonify({'success': True})
-    except Exception as e:
-        print(f"Bulk delete history err: {e}")
-        return jsonify({'error': str(e)}), 500
+    if supabase:
+        try:
+            supabase.table("detection_events").delete().in_("id", event_ids).eq("user_id", user_id).execute()
+        except Exception as e:
+            print(f"Supabase bulk delete failed: {e}. Removing locally.")
+            
+    delete_bulk_local_events(event_ids, user_id)
+    return jsonify({'success': True})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
