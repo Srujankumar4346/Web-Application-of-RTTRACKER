@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const navBtns = document.querySelectorAll('.nav-btn');
     const sections = document.querySelectorAll('.page-section');
 
-    const adminPanel = document.getElementById('admin-panel');
+
 
     let pollInterval = null;
 

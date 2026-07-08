@@ -7,7 +7,6 @@ import uuid
 from flask import Flask, render_template, Response, request, jsonify
 from ultralytics import YOLO
 import jwt
-import requests
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -97,7 +96,7 @@ model_lock = threading.Lock()
 
 # The model now detects all 80 standard COCO classes for the presentation.
 # Available objects include: Person, Car, Bench, Clock (Watches), Laptop, Phone, Book, etc.
-TARGET_CLASSES = None 
+
 
 analytics_state = {
     'objects_detected': {},
